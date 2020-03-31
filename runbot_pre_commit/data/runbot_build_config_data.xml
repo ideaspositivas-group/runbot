@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="runbot_build_config_step_check_pre_commit" model="runbot.build.config.step">
+    <field name="name">pre-commit</field>
+    <field name="job_type">pre-commit</field>
+    <field name="protected" eval="True"/>
+  </record>
+</odoo>
