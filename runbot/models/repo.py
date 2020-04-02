@@ -24,21 +24,113 @@ from psycopg2.extensions import TransactionRollbackError
 
 _logger = logging.getLogger(__name__)
 
+
 class RunbotException(Exception):
     pass
 
-class runbot_repo(models.Model):
+
+class RepoTrigger(models.Models):
+    """
+    List of repo parts that must be part of the same project
+    """
+
+    _name = 'repo.trigger'
+    _inherit = 'mail.thread'
+
+    name = fields.Char("Repo trigger descriptions")
+    category_id = fields.Many2one('runbot.project.category')  # main/security/runbot
+    trigger_repos = fields.Many2Many('repo.group', "Triggers")
+    dependency_repo = fields.Many2Many('repo.group', "Dependencies")
+    config_id = fields.Many2one('runbot.build.config', 'Config')
+    # maybe add many2many instead with type on config? maybe latter
+
+    #-odoo
+    #    -odoo                  (Split)
+
+    #-enterprise
+    #    -enterprise + odoo     (Split)
+
+    #-upgrade
+    #    upgrade                (Upgrade)
+
+    #-design-theme
+    #    design theme           (Design Theme)
+
+    #-runbot
+    #   runbot+odoo             (Runbot)
+
+    #-odoo-security
+    #   -odoo-security          (Split)
+
+    #-enterprise-security
+    #   -odoo-d + enterprise-s  (Split)
+
+    #-odoo+upgrade    (new concept), need both, or any?
+    #    odoo+upgrade           (Upgarde dev)
+
+    #-enterprise+upgrade    (new concept), need both, or any?
+    #    odoo+enterprise+upgrade(Upgarde dev)
+ 
+
+class RepoGroup(model.Models):
+    """
+    Regroups repo and it duplicates (forks): odoo+odoo-dev for each repo
+    """
+    _name = 'repo.group'
+    _inherit = 'mail.thread'
+
+    name = fields.Char("Repo forks descriptions")  # odoo/enterprise/upgrade/security/runbot/design_theme
+    main = fields.Many2one('runbot.repo', "Main repo")
+    main_regex = fields.Char('regex to define if a branch is a version or not')
+    repos = fields.Many2one('runbot.repo', "Main repo and its forks")
+    default_project_category_id = fields.Many2one('runbot.project.category',
+        help="Default project category to use when pushing on this repos")
+    modules = fields.Char("Modules to install", help="Comma-separated list of modules to install and test.")
+    modules_auto = fields.Selection([('none', 'None (only explicit modules list)'),
+                                     ('repo', 'Repository modules (excluding dependencies)'),
+                                     ('all', 'All modules (including dependencies)')],
+                                    default='all',
+                                    string="Other modules to install automatically")
+    nginx = fields.Boolean('Nginx')
+    group_ids = fields.Many2many('res.groups', string='Limited to groups')
+    server_files = fields.Char('Server files', help='Comma separated list of possible server files')  # odoo-bin,openerp-server,openerp-server.py
+    manifest_files = fields.Char('Manifest files', help='Comma separated list of possible manifest files', default='__manifest__.py')
+    addons_paths = fields.Char('Addons paths', help='Comma separated list of possible addons path', default='')
+    no_build = fields.Boolean("No build", help="Forbid creation of build on this repo", default=False)
+
+    #odoo
+    #   -odoo/odoo
+    #   -odoo-dev/odoo
+    #enterprise
+    #   -odoo/enterprise
+    #   -odoo-dev/enterprise
+    #upgarde
+    #   -odoo/upgrade
+    #design-theme
+    #   -odoo/design-theme
+    #   -odoo-dev/design-theme
+    #design-theme
+    #   -odoo/design-theme
+    #   -odoo-dev/design-theme
+    #odoo-security
+    #   -odoo/odoo-security
+    #enterprise-security
+    #   -enterprise/enterprise-security
+    #runbot
+    #   -odoo/runbot
+
+class RunbotRepo(models.Model):
 
     _name = "runbot.repo"
     _description = "Repo"
     _order = 'sequence, id'
 
+    repo_group = fields.Many2one('repo.group')
     name = fields.Char('Repository', required=True)
     short_name = fields.Char('Short name', compute='_compute_short_name', store=False, readonly=True)
     sequence = fields.Integer('Sequence')
     path = fields.Char(compute='_get_path', string='Directory', readonly=True)
     base = fields.Char(compute='_get_base_url', string='Base URL', readonly=True)  # Could be renamed to a more explicit name like base_url
-    nginx = fields.Boolean('Nginx')
     mode = fields.Selection([('disabled', 'Disabled'),
                              ('poll', 'Poll'),
                              ('hook', 'Hook')],
@@ -46,28 +138,12 @@ class runbot_repo(models.Model):
                             string="Mode", required=True, help="hook: Wait for webhook on /runbot/hook/<id> i.e. github push event")
     hook_time = fields.Float('Last hook time', compute='_compute_hook_time')
     get_ref_time = fields.Float('Last refs db update', compute='_compute_get_ref_time')
-    duplicate_id = fields.Many2one('runbot.repo', 'Duplicate repo', help='Repository for finding duplicate builds')
-    modules = fields.Char("Modules to install", help="Comma-separated list of modules to install and test.")
-    modules_auto = fields.Selection([('none', 'None (only explicit modules list)'),
-                                     ('repo', 'Repository modules (excluding dependencies)'),
-                                     ('all', 'All modules (including dependencies)')],
-                                    default='all',
-                                    string="Other modules to install automatically")
-
-    dependency_ids = fields.Many2many(
-        'runbot.repo', 'runbot_repo_dep_rel', column1='dependant_id', column2='dependency_id',
-        string='Extra dependencies',
-        help="Community addon repos which need to be present to run tests.")
     token = fields.Char("Github token", groups="runbot.group_runbot_admin")
-    group_ids = fields.Many2many('res.groups', string='Limited to groups')
+    is_main = fields.Boolean('Is main', compute='_compute_is_main')
 
-    repo_config_id = fields.Many2one('runbot.build.config', 'Repo Config')
-    config_id = fields.Many2one('runbot.build.config', 'Run Config', compute='_compute_config_id', inverse='_inverse_config_id')
-
-    server_files = fields.Char('Server files', help='Comma separated list of possible server files')  # odoo-bin,openerp-server,openerp-server.py
-    manifest_files = fields.Char('Manifest files', help='Comma separated list of possible manifest files', default='__manifest__.py')
-    addons_paths = fields.Char('Addons paths', help='Comma separated list of possible addons path', default='')
-    no_build = fields.Boolean("No build", help="Forbid creation of build on this repo", default=False)
+    def _compute_is_mail(self):
+        for repo in self:
+            repo.is_main = repo.repo_group.main == repo
 
     def _compute_config_id(self):
         for repo in self:
@@ -298,7 +374,6 @@ class runbot_repo(models.Model):
         The returned structure contains all the branches from refs newly created
         or older ones.
         """
-        Branch = self.env['runbot.branch']
         self.env.cr.execute("""
             WITH t (branch) AS (SELECT unnest(%s))
           SELECT t.branch, b.id
@@ -306,13 +381,14 @@ class runbot_repo(models.Model):
            WHERE b.repo_id = %s;
         """, ([r[0] for r in refs], self.id))
         ref_branches = {r[0]: r[1] for r in self.env.cr.fetchall()}
-
         for name, sha, date, author, author_email, subject, committer, committer_email in refs:
             if not ref_branches.get(name):
                 _logger.debug('repo %s found new branch %s', self.name, name)
-                new_branch = Branch.create({'repo_id': self.id, 'name': name})
+                new_branch = self.env['runbot.branch'].create({'repo_id': self.id, 'name': name})
                 ref_branches[name] = new_branch.id
-        return ref_branches
+
+        branches = self.env['runbot.branch'].browse(ref_branches.values())
+
 
     def _find_new_commits(self, refs, ref_branches):
         """Find new commits in bare repo
@@ -321,53 +397,46 @@ class runbot_repo(models.Model):
                              described in _find_or_create_branches
         """
         self.ensure_one()
-        Branch = self.env['runbot.branch']
-        Build = self.env['runbot.build']
-        icp = self.env['ir.config_parameter']
-        max_age = int(icp.get_param('runbot.runbot_max_age', default=30))
-
-        self.env.cr.execute("""
-            SELECT DISTINCT ON (branch_id) name, branch_id
-            FROM runbot_build WHERE branch_id in %s AND build_type = 'normal' AND parent_id is null ORDER BY branch_id,id DESC;
-        """, (tuple([ref_branches[r[0]] for r in refs]),))
-        # generate a set of tuples (branch_id, sha)
-        builds_candidates = {(r[1], r[0]) for r in self.env.cr.fetchall()}
+        max_age = int(self.env['ir.config_parameter'].get_param('runbot.runbot_max_age', default=30))
 
         for name, sha, date, author, author_email, subject, committer, committer_email in refs:
-            branch = Branch.browse(ref_branches[name])
+            branch = self.env['runbot.branch'].browse(ref_branches[name])
 
             # skip the build for old branches (Could be checked before creating the branch in DB ?)
-            if dateutil.parser.parse(date[:19]) + datetime.timedelta(days=max_age) < datetime.datetime.now():
-                continue
-
+            # if dateutil.parser.parse(date[:19]) + datetime.timedelta(days=max_age) < datetime.datetime.now():
+            #     continue
             # create build (and mark previous builds as skipped) if not found
-            if not (branch.id, sha) in builds_candidates:
+            if branch.head_sha != sha: # new push on branch
+                _logger.debug('repo %s branch %s new commit found: %s', self.name, branch.name, sha)
+                commit = self.env['runbot.commit'].search([('sha', '=', sha), ('repo_id', '=', self.id)])
+                if not commit:
+                    commit = self.env['runbot.commit'].create({
+                        'sha': sha,
+                        'repo_id': self.id,
+                        'author': author,
+                        'author_email': author_email,
+                        'committer': committer,
+                        'committer_email': committer_email,
+                        'subject': subject,
+                        'date': dateutil.parser.parse(date[:19]),
+                    })
+                branch.head = commit
                 if branch.no_auto_build or branch.no_build or (branch.repo_id.no_build and not branch.rebuild_requested):
                     continue
                 if branch.rebuild_requested:
                     branch.rebuild_requested = False
-                _logger.debug('repo %s branch %s new build found revno %s', self.name, branch.name, sha)
-                build_info = {
-                    'branch_id': branch.id,
-                    'name': sha,
-                    'author': author,
-                    'author_email': author_email,
-                    'committer': committer,
-                    'committer_email': committer_email,
-                    'subject': subject,
-                    'date': dateutil.parser.parse(date[:19]),
-                    'build_type': 'normal',
-                }
-                if not branch.sticky:
+
+
+                project = self.env['runbot.project']._from_branch(branch)
+                project_instance = project._get_preparing_instance()
+                project_instance._add_commit(commit)
+
+                if not project.sticky:
                     # pending builds are skipped as we have a new ref
                     builds_to_skip = Build.search(
-                        [('branch_id', '=', branch.id), ('local_state', '=', 'pending')],
+                        [('project_id', '=', project.id), ('local_state', '=', 'pending')],
                         order='sequence asc')
                     builds_to_skip._skip(reason='New ref found')
-                    if builds_to_skip:
-                        build_info['sequence'] = builds_to_skip[0].sequence
-
-                Build.create(build_info)
 
     def _create_pending_builds(self):
         """ Find new commits in physical repos"""
@@ -387,9 +456,12 @@ class runbot_repo(models.Model):
 
         # keep _find_or_create_branches separated from build creation to ease
         # closest branch detection
+        # todo, maybe this can be simplified now
         for repo in self:
             if repo in refs:
                 repo._find_new_commits(refs[repo], ref_branches[repo])
+
+        preparing_projects_builds = 
 
     def _clone(self):
         """ Clone the remote repo if needed """

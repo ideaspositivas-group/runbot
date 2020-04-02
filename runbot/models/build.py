@@ -52,8 +52,48 @@ def make_selection(array):
         return (string, string.replace('_', ' ').capitalize())
     return [format(elem) if isinstance(elem, str) else elem for elem in array]
 
+class Commit(models.Model):  # todo adapt python step that uses Commit
+    _name = "runbot.commit"
+    _description = "Commit"
 
-class runbot_build(models.Model):
+    _sql_constraints = [('sha_repo_uniq', 'unique (sha,repo_id)', 'The sha must be unique per repository !')]
+
+    sha = fields.Char('sha')
+    repo_id = fields.Many2One('Repository', )
+    date = fields.Datetime('Commit date')
+    author = fields.Char('Author')
+    author_email = fields.Char('Author Email')
+    committer = fields.Char('Committer')
+    committer_email = fields.Char('Committer Email')
+    subject = fields.Text('Subject')
+
+    def _source_path(self, *path):
+        return self.repo._source_path(self.sha, *path)
+
+    def export(self):
+        return self.repo._git_export(self.sha)
+
+    def read_source(self, file, mode='r'):
+        file_path = self._source_path(file)
+        try:
+            with open(file_path, mode) as f:
+                return f.read()
+        except:
+            return False
+
+    def __str__(self):
+        return '%s:%s' % (self.repo.short_name, self.sha)
+
+class RunbotBuild(models.Model):
+
+
+    # remove duplicate management
+    # instead, link between project_build and build
+    # kill -> only available from project.
+    # kill -> actually detach the build from the project
+    # rebuild: detach and create a new link (a little like exact rebuild),
+    # if a build is detached from all project, kill it
+    # nigktly?
     _name = "runbot.build"
     _description = "Build"
 
@@ -61,21 +101,20 @@ class runbot_build(models.Model):
     _order = 'id desc'
     _rec_name = 'id'
 
-    branch_id = fields.Many2one('runbot.branch', 'Branch', required=True, ondelete='cascade', index=True)
-    repo_id = fields.Many2one(related='branch_id.repo_id', readonly=True, store=True)
-    name = fields.Char('Revno', required=True)
+    project_build_id = fields.Many2one('runbot.branch', 'Branch', required=True, ondelete='cascade', index=True)
+    trigger_id = fields.Many2one('repo.trigger', 'Trigger that create this build', readonly=True)
+    dependency_ids = fields.One2many('runbot.build.dependency', 'build_id', copy=True)
+
+    # all displayed info removed. How to replace that?
+    # -> commit corresponding to repo of trigger_id
+    # -> display all? 
+
     description = fields.Char('Description', help='Informative description')
     md_description = fields.Char(compute='_compute_md_description', String='MD Parsed Description', help='Informative description markdown parsed')
     host = fields.Char('Host')
     port = fields.Integer('Port')
     dest = fields.Char(compute='_compute_dest', type='char', string='Dest', readonly=1, store=True)
     domain = fields.Char(compute='_compute_domain', type='char', string='URL')
-    date = fields.Datetime('Commit date')
-    author = fields.Char('Author')
-    author_email = fields.Char('Author Email')
-    committer = fields.Char('Committer')
-    committer_email = fields.Char('Committer Email')
-    subject = fields.Text('Subject')
     sequence = fields.Integer('Sequence')
     log_ids = fields.One2many('ir.logging', 'build_id', string='Logs')
     error_log_ids = fields.One2many('ir.logging', 'build_id', domain=[('level', 'in', ['WARNING', 'ERROR', 'CRITICAL'])], string='Error Logs')
@@ -108,7 +147,6 @@ class runbot_build(models.Model):
     job_time = fields.Integer(compute='_compute_job_time', string='Job time')
     build_time = fields.Integer(compute='_compute_build_time', string='Build time')
     build_age = fields.Integer(compute='_compute_build_age', string='Build age')
-    duplicate_id = fields.Many2one('runbot.build', 'Corresponding Build', index=True)
     revdep_build_ids = fields.Many2many('runbot.build', 'runbot_rev_dep_builds',
                                         column1='rev_dep_id', column2='dependent_id',
                                         string='Builds that depends on this build')

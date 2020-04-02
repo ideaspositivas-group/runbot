@@ -8,24 +8,33 @@ from odoo.osv import expression
 
 _logger = logging.getLogger(__name__)
 _re_patch = re.compile(r'.*patch-\d+$')
+ # todo remove that
 
 
 class runbot_branch(models.Model):
-
     _name = "runbot.branch"
     _description = "Branch"
     _order = 'name'
     _sql_constraints = [('branch_repo_uniq', 'unique (name,repo_id)', 'The branch must be unique per repository !')]
 
+    head = fields.Many2One('Head Commit', 'runbot.commit')
+    head_sha = fields.Char('Head sha', related='head.sha', stored=True)
+    project_id = fields.Many2one('runbot.project', 'Project', required=True, ondelete='cascade')
     repo_id = fields.Many2one('runbot.repo', 'Repository', required=True, ondelete='cascade')
     duplicate_repo_id = fields.Many2one('runbot.repo', 'Duplicate Repository', related='repo_id.duplicate_id',)
     name = fields.Char('Ref Name', required=True)
     branch_name = fields.Char(compute='_get_branch_infos', string='Branch', readonly=1, store=True)
     branch_url = fields.Char(compute='_get_branch_url', string='Branch url', readonly=1)
     pull_head_name = fields.Char(compute='_get_branch_infos', string='PR HEAD name', readonly=1, store=True)
+    pull_head_repo_id = fields.Many2one('runbot.repo', 'Repository', ondelete='cascade')
     target_branch_name = fields.Char(compute='_get_branch_infos', string='PR target branch', store=True)
     pull_branch_name = fields.Char(compute='_compute_pull_branch_name', string='Branch display name')
     sticky = fields.Boolean('Sticky')
+    is_main = fields.Boolean('Is main', default=False, compute='_compute_is_main', stored=True)
+    # TODO remove sticky and main and stuff.
+    # should be based on a project, but need a category to know corresponding project
+    # anyway, display will be by category (?)
+
     closest_sticky = fields.Many2one('runbot.branch', compute='_compute_closest_sticky', string='Closest sticky')
     defined_sticky = fields.Many2one('runbot.branch', string='Force sticky')
     previous_version = fields.Many2one('runbot.branch', compute='_compute_previous_version', string='Previous version branch')
@@ -42,6 +51,12 @@ class runbot_branch(models.Model):
     config_id = fields.Many2one('runbot.build.config', 'Run Config', compute='_compute_config_id', inverse='_inverse_config_id')
 
     make_stats = fields.Boolean('Extract stats from logs', compute='_compute_make_stats', store=True)
+
+    @api.depends('sticky')
+    def _compute_is_main(self):
+        if self.sticky:
+            self.is_main = True
+        # else, don't change or use default on create, does it work?
 
     @api.depends('sticky', 'defined_sticky', 'target_branch_name', 'name')
     # won't be recompute if a new branch is marked as sticky or sticky is removed, but should be ok if not stored
@@ -126,6 +141,8 @@ class runbot_branch(models.Model):
                     if not _re_patch.match(pi['head']['label']):
                         # label is used to disambiguate PR with same branch name
                         branch.pull_head_name = pi['head']['label']
+                        pull_head_repo_name = pi['head']['repo']['full_name']
+                        branch.pull_head_repo_id = self.env['runbot.repo'].search(['name', 'like', '%%:%s' % pull_head_repo_name)], limit=1)
             else:
                 branch.branch_name = ''
 
