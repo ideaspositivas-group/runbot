@@ -84,9 +84,52 @@ class Commit(models.Model):  # todo adapt python step that uses Commit
     def __str__(self):
         return '%s:%s' % (self.repo.short_name, self.sha)
 
-class RunbotBuild(models.Model):
+class BuildParameters(models.Model):
+    _name = "runbot.builds.params"
+    _description = "All information used by a build to run, should be unique and set on create only"
 
+    trigger_id = fields.Many2one('repo.trigger', 'Trigger that create this build', readonly=True)
 
+    # execution parametter
+    dependency_ids = fields.One2many('runbot.build.dependency', 'build_id', copy=True)
+    version_id = fields.Many2One('runbot.version')
+    config_data = JsonDictField('Config Data')
+
+    # other informations
+    description = fields.Char('Description', help='Informative description')
+    md_description = fields.Char(compute='_compute_md_description', String='MD Parsed Description', help='Informative description markdown parsed')
+    extra_params = fields.Char('Extra cmd args')
+    config_id = fields.Many2one(
+        'runbot.build.config', 'Run Config', required=True,
+        default=lambda self: self.env.ref('runbot.runbot_build_config_default', raise_if_not_found=False))
+    commit_path_mode = fields.Selection([('rep_sha', 'repo name + sha'),
+                                    ('soft', 'repo name only'),
+                                    ],
+                                default='soft',
+                                string='Source export path mode')
+    builds_refs = fields.Many2One('')
+    # problem for dependencies and path_mode.
+    # they are change for upgrade, need commit in another version.
+    # a new BuildParameters will be created in a subbuild: not cool
+    # would it be possible to define in advance all depepdencies? 
+    # upgrade: need a nightly build in 12 and in 13.
+    # master: need a nightly build in 12.3
+    # 12.3 need a last build of master
+    # niglty upgrade needs a bunch of build everywhere
+    # trigger could define domains to find builds
+    # build_params could use those domains
+    # other solution: ignore this, will be time setted, subbuild will create new params
+
+class BuildRef(models.models):
+    _name = 'build.ref'
+    _description = 'build result used for dump or dependencies as reference for another build'
+
+    build_params_id = fields.Many2one('runbot.builds.params')
+    ref_config_descriptor = fields.Many2one('runbot.build.ref.descriptor')
+    key = fields.Char('key')
+    build_id = fields.Many2one('runbot.build')
+
+class BuildResults(models.Model):
     # remove duplicate management
     # instead, link between project_instance and build
     # kill -> only available from project.
@@ -94,6 +137,7 @@ class RunbotBuild(models.Model):
     # rebuild: detach and create a new link (a little like exact rebuild),
     # if a build is detached from all project, kill it
     # nigktly?
+
     _name = "runbot.build"
     _description = "Build"
 
@@ -101,56 +145,46 @@ class RunbotBuild(models.Model):
     _order = 'id desc'
     _rec_name = 'id'
 
-    project_instance_id = fields.Many2one('runbot.branch', 'Branch', required=True, ondelete='cascade', index=True)
-    trigger_id = fields.Many2one('repo.trigger', 'Trigger that create this build', readonly=True)
-    dependency_ids = fields.One2many('runbot.build.dependency', 'build_id', copy=True)
 
     # all displayed info removed. How to replace that?
     # -> commit corresponding to repo of trigger_id
-    # -> display all? 
+    # -> display all?
 
-    description = fields.Char('Description', help='Informative description')
-    md_description = fields.Char(compute='_compute_md_description', String='MD Parsed Description', help='Informative description markdown parsed')
-    host = fields.Char('Host')
-    port = fields.Integer('Port')
-    dest = fields.Char(compute='_compute_dest', type='char', string='Dest', readonly=1, store=True)
-    domain = fields.Char(compute='_compute_domain', type='char', string='URL')
-    sequence = fields.Integer('Sequence')
-    log_ids = fields.One2many('ir.logging', 'build_id', string='Logs')
-    error_log_ids = fields.One2many('ir.logging', 'build_id', domain=[('level', 'in', ['WARNING', 'ERROR', 'CRITICAL'])], string='Error Logs')
-    config_data = JsonDictField('Config Data')
-    stat_ids = fields.One2many('runbot.build.stat', 'build_id', strings='Statistics values')
-
+    build_params = fields.Many2One('runbot.build.params')
+    sequence = fields.Integer('Sequence')  # todo remove
     # state machine
-
     global_state = fields.Selection(make_selection(state_order), string='Status', compute='_compute_global_state', store=True)
     local_state = fields.Selection(make_selection(state_order), string='Build Status', default='pending', required=True, index=True)
     global_result = fields.Selection(make_selection(result_order), string='Result', compute='_compute_global_result', store=True)
     local_result = fields.Selection(make_selection(result_order), string='Build Result')
     triggered_result = fields.Selection(make_selection(result_order), string='Triggered Result')  # triggered by db only
-
     requested_action = fields.Selection([('wake_up', 'To wake up'), ('deathrow', 'To kill')], string='Action requested', index=True)
+    # web infos
+    host = fields.Char('Host')
+    port = fields.Integer('Port')
+    dest = fields.Char(compute='_compute_dest', type='char', string='Dest', readonly=1, store=True)
+    domain = fields.Char(compute='_compute_domain', type='char', string='URL')
+    # logs and stats
+    log_ids = fields.One2many('ir.logging', 'build_id', string='Logs')
+    error_log_ids = fields.One2many('ir.logging', 'build_id', domain=[('level', 'in', ['WARNING', 'ERROR', 'CRITICAL'])], string='Error Logs')
+    stat_ids = fields.One2many('runbot.build.stat', 'build_id', strings='Statistics values')
+    log_list = fields.Char('Comma separted list of step_ids names with logs', compute="_compute_log_list", store=True)
 
-    nb_pending = fields.Integer("Number of pending in queue", default=0)
-    nb_testing = fields.Integer("Number of test slot use", default=0)
-    nb_running = fields.Integer("Number of run slot use", default=0)
-
-    # should we add a stored field for children results?
     active_step = fields.Many2one('runbot.build.config.step', 'Active step')
     job = fields.Char('Active step display name', compute='_compute_job')
     job_start = fields.Datetime('Job start')
     job_end = fields.Datetime('Job end')
-    gc_date = fields.Datetime('Local cleanup date', compute='_compute_gc_date')
-    gc_delay = fields.Integer('Cleanup Delay', help='Used to compute gc_date')
     build_start = fields.Datetime('Build start')
     build_end = fields.Datetime('Build end')
     job_time = fields.Integer(compute='_compute_job_time', string='Job time')
     build_time = fields.Integer(compute='_compute_build_time', string='Build time')
+
+    gc_date = fields.Datetime('Local cleanup date', compute='_compute_gc_date')
+    gc_delay = fields.Integer('Cleanup Delay', help='Used to compute gc_date')
+
     build_age = fields.Integer(compute='_compute_build_age', string='Build age')
-    revdep_build_ids = fields.Many2many('runbot.build', 'runbot_rev_dep_builds',
-                                        column1='rev_dep_id', column2='dependent_id',
-                                        string='Builds that depends on this build')
-    extra_params = fields.Char('Extra cmd args')
+    # todo remove revdep_build_ids table
+
     coverage = fields.Boolean('Code coverage was computed for this build')
     coverage_result = fields.Float('Coverage result', digits=(5, 2))
     build_type = fields.Selection([('scheduled', 'This build was automatically scheduled'),
@@ -160,23 +194,22 @@ class RunbotBuild(models.Model):
                                    ],
                                   default='normal',
                                   string='Build type')
+
+    # what about parent_id and duplmicates?
+    # -> always create build, no duplicate? (make sence since duplicate should be the parent and params should be inherited)
+    # -> build_link ?
+
     parent_id = fields.Many2one('runbot.build', 'Parent Build', index=True)
     parent_path = fields.Char('Parent path', index=True)
     # should we add a has children stored boolean?
-    hidden = fields.Boolean("Don't show build on main page", default=False)  # index?
+    hidden = fields.Boolean("Don't show build on main page", default=False) # todo is it still usefull? 
     children_ids = fields.One2many('runbot.build', 'parent_id')
-    dependency_ids = fields.One2many('runbot.build.dependency', 'build_id', copy=True)
 
-    config_id = fields.Many2one('runbot.build.config', 'Run Config', required=True, default=lambda self: self.env.ref('runbot.runbot_build_config_default', raise_if_not_found=False))
-    real_build = fields.Many2one('runbot.build', 'Real Build', help="duplicate_id or self", compute='_compute_real_build')
-    log_list = fields.Char('Comma separted list of step_ids names with logs', compute="_compute_log_list", store=True)
+    config_id = fields.Many2one('runbot.build.config', 'Run Config', required=True, raise_if_not_found=False))
+    # config of top_build is inherithed from params, but subbuild will have different configs
+
     orphan_result = fields.Boolean('No effect on the parent result', default=False)
 
-    commit_path_mode = fields.Selection([('rep_sha', 'repo name + sha'),
-                                         ('soft', 'repo name only'),
-                                         ],
-                                        default='soft',
-                                        string='Source export path mode')
     build_url = fields.Char('Build url', compute='_compute_build_url', store=False)
     build_error_ids = fields.Many2many('runbot.build.error', 'runbot_build_error_ids_runbot_build_rel', string='Errors')
     keep_running = fields.Boolean('Keep running', help='Keep running')
@@ -1086,6 +1119,7 @@ class RunbotBuild(models.Model):
                 except Exception:
                     self._log('_github_status_notify_all', 'Status notification failed for "%s" in repo "%s"' % (self.name, repo.name))
 
+    # TODO should be on project: multiple build for the same hash
     def _github_status(self):
         """Notify github of failed/successful builds"""
         for build in self:
@@ -1190,6 +1224,3 @@ class RunbotBuild(models.Model):
 
     def get_formated_build_age(self):
         return s2human(self.build_age)
-
-    def sorted_revdep_build_ids(self):
-        return sorted(self.revdep_build_ids, key=lambda build: build.repo_id.name)

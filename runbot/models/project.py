@@ -102,7 +102,7 @@ class Project(models.Model):
         return None
 
 
-class ProjectBuild(models.Model):
+class ProjectInstance(models.Model):
     _name = "runbot.project.instance"
     _description = "Project instance"
     _inherit = "mail.thread"
@@ -123,14 +123,15 @@ class ProjectBuild(models.Model):
             group = project_commit.repo_group
             triggers = self.env['repo.trigger'].search([('project_category_id', '=', self.project_category_id), ('trigger_repos', 'in', commit.repo_group_id)])
 
-class ProjectBuildCommit(models.Model):
+class ProjectInstanceCommit(models.Model):
     _name = "runbot.project.instance.commit"
     _description = "Project instance commit"
 
     commit_id = 
     project_instance_id = 
     repo_group_id = 
-
+    match_type = # HEAD, DEFAULT, 
+    has_main = fields.Boolean: # this commit exists in a sticky project, (match_type Dafault or push an existing branch)
 
 class Commit(models.Model):
     _name = "runbot.commit"
@@ -161,3 +162,17 @@ class Commit(models.Model):
 
     def __str__(self):
         return '%s:%s' % (self.repo.short_name, self.sha)
+
+
+class ProjectInstanceBuild(models.Models):
+    _name = 'runbot.project.instance.build'
+    _description = 'Link between a project instance and a build'
+
+    project_instance_id = field.Many2one('runbot.project.instance')
+    build_id = field.Many2one('runbot.build')
+    link_type = field.Selection([('created', 'Build created'),('matched', 'Existing build matched')]) # rebuild type? 
+    active = fields.Boolean('Attached')
+    # rebuild, what to do: since build ccan be in multiple instance:
+    # - replace for all instance?
+    # - only available on instance and replace for instance only? 
+    # - create a new project instance will new linked build?

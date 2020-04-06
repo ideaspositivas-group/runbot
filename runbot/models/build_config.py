@@ -83,6 +83,16 @@ class Config(models.Model):
                 for create_config in step.create_config_ids:
                     create_config._check_recustion(visited[:])
 
+class ConfigStepBuildRef(models.Model):
+    _name = 'runbot.build.ref.descriptor'
+    _description = 'Extra dependency build that will be used by step'
+
+    config_step_id = fields.Many2one('runbot.build.config.step')
+    key = fields.Char('Key')
+    domain = fields.Char('Domain')
+    #  need_database = fields.Boolean
+
+    # todo: for python step, check that needed config ids are always in config_ids list
 
 class ConfigStep(models.Model):
     _name = 'runbot.build.config.step'

@@ -25,6 +25,8 @@ from psycopg2.extensions import TransactionRollbackError
 _logger = logging.getLogger(__name__)
 
 
+# WHAT IF push 12.0/13.0/13.4 in odoo-dev?
+
 class RunbotException(Exception):
     pass
 
@@ -42,6 +44,8 @@ class RepoTrigger(models.Models):
     trigger_repos = fields.Many2Many('repo.group', "Triggers")
     dependency_repo = fields.Many2Many('repo.group', "Dependencies")
     config_id = fields.Many2one('runbot.build.config', 'Config')
+    # find a way to store needed dump or extra dependencies (migrations tests)
+    build_refs_descriptors = fields.One2Many('')
     # maybe add many2many instead with type on config? maybe latter
 
     #-odoo
