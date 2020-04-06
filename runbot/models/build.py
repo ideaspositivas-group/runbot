@@ -88,7 +88,7 @@ class RunbotBuild(models.Model):
 
 
     # remove duplicate management
-    # instead, link between project_build and build
+    # instead, link between project_instance and build
     # kill -> only available from project.
     # kill -> actually detach the build from the project
     # rebuild: detach and create a new link (a little like exact rebuild),
@@ -101,7 +101,7 @@ class RunbotBuild(models.Model):
     _order = 'id desc'
     _rec_name = 'id'
 
-    project_build_id = fields.Many2one('runbot.branch', 'Branch', required=True, ondelete='cascade', index=True)
+    project_instance_id = fields.Many2one('runbot.branch', 'Branch', required=True, ondelete='cascade', index=True)
     trigger_id = fields.Many2one('repo.trigger', 'Trigger that create this build', readonly=True)
     dependency_ids = fields.One2many('runbot.build.dependency', 'build_id', copy=True)
 
