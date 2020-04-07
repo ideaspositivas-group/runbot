@@ -31,7 +31,7 @@ class RunbotException(Exception):
     pass
 
 
-class RepoTrigger(models.Models):
+class RepoTrigger():
     """
     List of repo parts that must be part of the same project
     """
@@ -41,11 +41,11 @@ class RepoTrigger(models.Models):
 
     name = fields.Char("Repo trigger descriptions")
     category_id = fields.Many2one('runbot.project.category')  # main/security/runbot
-    trigger_repos = fields.Many2Many('repo.group', "Triggers")
-    dependency_repo = fields.Many2Many('repo.group', "Dependencies")
+    repos_group_ids = fields.Many2many('repo.group', "Triggers")
+    dependency_repo_ids = fields.Many2many('repo.group', "Dependencies")
     config_id = fields.Many2one('runbot.build.config', 'Config')
     # find a way to store needed dump or extra dependencies (migrations tests)
-    build_refs_descriptors = fields.One2Many('')
+    build_refs_descriptors_ids = fields.One2many('')
     # maybe add many2many instead with type on config? maybe latter
 
     #-odoo
@@ -74,14 +74,14 @@ class RepoTrigger(models.Models):
 
     #-enterprise+upgrade    (new concept), need both, or any?
     #    odoo+enterprise+upgrade(Upgarde dev)
- 
 
-class RepoGroup(model.Models):
+class RepoGroup(models.Model):
     """
     Regroups repo and it duplicates (forks): odoo+odoo-dev for each repo
     """
     _name = 'repo.group'
     _inherit = 'mail.thread'
+    _description = 'Main repository and forks'
 
     name = fields.Char("Repo forks descriptions")  # odoo/enterprise/upgrade/security/runbot/design_theme
     main = fields.Many2one('runbot.repo', "Main repo")
@@ -464,8 +464,6 @@ class RunbotRepo(models.Model):
         for repo in self:
             if repo in refs:
                 repo._find_new_commits(refs[repo], ref_branches[repo])
-
-        preparing_projects_builds = 
 
     def _clone(self):
         """ Clone the remote repo if needed """

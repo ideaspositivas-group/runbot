@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import time
 import datetime
-from ..common import dt2time, fqdn, now, grep, local_pgadmin_cursor, s2human, Commit, dest_reg, os, list_local_dbs, pseudo_markdown
+from ..common import dt2time, fqdn, now, grep, local_pgadmin_cursor, s2human, Commit as OldComit, dest_reg, os, list_local_dbs, pseudo_markdown
 from ..container import docker_build, docker_stop, docker_state, Command
 from ..fields import JsonDictField
 from odoo.addons.runbot.models.repo import RunbotException
@@ -52,37 +52,6 @@ def make_selection(array):
         return (string, string.replace('_', ' ').capitalize())
     return [format(elem) if isinstance(elem, str) else elem for elem in array]
 
-class Commit(models.Model):  # todo adapt python step that uses Commit
-    _name = "runbot.commit"
-    _description = "Commit"
-
-    _sql_constraints = [('sha_repo_uniq', 'unique (sha,repo_id)', 'The sha must be unique per repository !')]
-
-    sha = fields.Char('sha')
-    repo_id = fields.Many2One('Repository', )
-    date = fields.Datetime('Commit date')
-    author = fields.Char('Author')
-    author_email = fields.Char('Author Email')
-    committer = fields.Char('Committer')
-    committer_email = fields.Char('Committer Email')
-    subject = fields.Text('Subject')
-
-    def _source_path(self, *path):
-        return self.repo._source_path(self.sha, *path)
-
-    def export(self):
-        return self.repo._git_export(self.sha)
-
-    def read_source(self, file, mode='r'):
-        file_path = self._source_path(file)
-        try:
-            with open(file_path, mode) as f:
-                return f.read()
-        except:
-            return False
-
-    def __str__(self):
-        return '%s:%s' % (self.repo.short_name, self.sha)
 
 class BuildParameters(models.Model):
     _name = "runbot.builds.params"
@@ -92,7 +61,7 @@ class BuildParameters(models.Model):
 
     # execution parametter
     dependency_ids = fields.One2many('runbot.build.dependency', 'build_id', copy=True)
-    version_id = fields.Many2One('runbot.version')
+    version_id = fields.Many2one('runbot.version')
     config_data = JsonDictField('Config Data')
 
     # other informations
@@ -107,7 +76,7 @@ class BuildParameters(models.Model):
                                     ],
                                 default='soft',
                                 string='Source export path mode')
-    builds_refs = fields.Many2One('')
+    builds_refs = fields.One2many('build.ref', 'build_params_id')
     # problem for dependencies and path_mode.
     # they are change for upgrade, need commit in another version.
     # a new BuildParameters will be created in a subbuild: not cool
@@ -120,7 +89,7 @@ class BuildParameters(models.Model):
     # build_params could use those domains
     # other solution: ignore this, will be time setted, subbuild will create new params
 
-class BuildRef(models.models):
+class BuildRef(models.Model):
     _name = 'build.ref'
     _description = 'build result used for dump or dependencies as reference for another build'
 
@@ -150,7 +119,7 @@ class BuildResults(models.Model):
     # -> commit corresponding to repo of trigger_id
     # -> display all?
 
-    build_params = fields.Many2One('runbot.build.params')
+    build_params = fields.Many2one('runbot.build.params')
     sequence = fields.Integer('Sequence')  # todo remove
     # state machine
     global_state = fields.Selection(make_selection(state_order), string='Status', compute='_compute_global_state', store=True)
@@ -205,7 +174,7 @@ class BuildResults(models.Model):
     hidden = fields.Boolean("Don't show build on main page", default=False) # todo is it still usefull? 
     children_ids = fields.One2many('runbot.build', 'parent_id')
 
-    config_id = fields.Many2one('runbot.build.config', 'Run Config', required=True, raise_if_not_found=False))
+    config_id = fields.Many2one('runbot.build.config', 'Run Config', required=True, raise_if_not_found=False)
     # config of top_build is inherithed from params, but subbuild will have different configs
 
     orphan_result = fields.Boolean('No effect on the parent result', default=False)
@@ -320,7 +289,7 @@ class BuildResults(models.Model):
         return [values]
 
     def copy(self, default=None):
-        return super(runbot_build, self.with_context(force_rebuild=True)).copy(default)
+        return super(BuildResults, self.with_context(force_rebuild=True)).copy(default)
 
 
     @api.model_create_single
@@ -328,7 +297,7 @@ class BuildResults(models.Model):
         if not 'config_id' in vals:
             branch = self.env['runbot.branch'].browse(vals.get('branch_id'))
             vals['config_id'] = branch.config_id.id
-        build_id = super(runbot_build, self).create(vals)
+        build_id = super(BuildResults, self).create(vals)
         extra_info = {}
         if not build_id.sequence:
             extra_info['sequence'] = build_id.id
@@ -442,7 +411,7 @@ class BuildResults(models.Model):
         local_result = values.get('local_result')
         for build in self:
             assert not local_result or local_result == self._get_worst_result([build.local_result, local_result])  # dont write ok on a warn/error build
-        res = super(runbot_build, self).write(values)
+        res = super(BuildResults, self).write(values)
         for build in self:
             assert bool(not build.duplicate_id) ^ (build.local_state == 'duplicate')  # don't change duplicate state without removing duplicate id.
         if 'log_counter' in values: # not 100% usefull but more correct ( see test_ir_logging)
@@ -1020,7 +989,8 @@ class BuildResults(models.Model):
             build.requested_action = 'wake_up'
 
     def _get_all_commit(self):
-        return [Commit(self.repo_id, self.name)] + [Commit(dep._get_repo(), dep.dependency_hash) for dep in self.dependency_ids]
+        # TODO replace by runbot.commit
+        return [OldComit(self.repo_id, self.name)] + [OldComit(dep._get_repo(), dep.dependency_hash) for dep in self.dependency_ids]
 
     def _get_server_commit(self, commits=None):
         """

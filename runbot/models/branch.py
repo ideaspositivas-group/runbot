@@ -17,13 +17,14 @@ class runbot_branch(models.Model):
     _order = 'name'
     _sql_constraints = [('branch_repo_uniq', 'unique (name,repo_id)', 'The branch must be unique per repository !')]
 
-    head = fields.Many2One('Head Commit', 'runbot.commit')
+    head = fields.Many2one('runbot.commit', 'Head Commit')
     head_sha = fields.Char('Head sha', related='head.sha', stored=True)
     project_id = fields.Many2one('runbot.project', 'Project', required=True, ondelete='cascade')
     repo_id = fields.Many2one('runbot.repo', 'Repository', required=True, ondelete='cascade')
     duplicate_repo_id = fields.Many2one('runbot.repo', 'Duplicate Repository', related='repo_id.duplicate_id',)
     name = fields.Char('Ref Name', required=True)
     branch_name = fields.Char(compute='_get_branch_infos', string='Branch', readonly=1, store=True)
+    reference_name = fields.Char(compute='_compute_reference_name')
     branch_url = fields.Char(compute='_get_branch_url', string='Branch url', readonly=1)
     pull_head_name = fields.Char(compute='_get_branch_infos', string='PR HEAD name', readonly=1, store=True)
     pull_head_repo_id = fields.Many2one('runbot.repo', 'Repository', ondelete='cascade')
@@ -51,6 +52,40 @@ class runbot_branch(models.Model):
     config_id = fields.Many2one('runbot.build.config', 'Run Config', compute='_compute_config_id', inverse='_inverse_config_id')
 
     make_stats = fields.Boolean('Extract stats from logs', compute='_compute_make_stats', store=True)
+
+
+    # todo compute on branch, will be inefficient this way for multiple call
+    def _compute_reference_name(self):
+        """
+        a unique reference for a branch inside a project.
+            -branch_name for branches
+            - branch name part of pull_head_name for pr if repo is known
+            - pull_head_name (organisation:branch_name) for external pr
+        """
+        for branch in self:
+            repo_id = branch.repo_id
+            if branch.target_branch_name and branch.pull_head_name:  # odoo:master-remove-duplicate-idx, davidtranhp:xxx, 
+                _, name = branch.pull_head_name.split(':')  # TODO fix where pullheadname doesnt have : -> old branch, redo get_pull_info
+                repo_group = repo_id.repo_group
+                source_repo = branch.pull_head_repo_id
+                if source_repo:
+                    assert source_repo in repo_group.repos  # should be in repo list
+                else:
+                    name = branch.pull_head_name  # repo is not known, not in repo list must be an external pr, so use complete label
+            else:
+                name = branch.branch_name
+            return name
+        # cases to test:
+        # organisation:patch-x (no pull_head_name, should be changed)
+        # odoo-dev:master-my-dev
+        # odoo-dev:dummy-my-dev -> warning
+        # odoo:master-my-dev
+        # odoo:master-my-dev
+        # odoo:master-my-dev + odoo-dev:master-my-dev
+        # -> convention in odoo, this is an error. A branch_name should be unique
+        # pr targetting odoo-dev
+        #
+        # a pr pull head name should be in a repo or one of its forks, we need to check that
 
     @api.depends('sticky')
     def _compute_is_main(self):
@@ -142,7 +177,7 @@ class runbot_branch(models.Model):
                         # label is used to disambiguate PR with same branch name
                         branch.pull_head_name = pi['head']['label']
                         pull_head_repo_name = pi['head']['repo']['full_name']
-                        branch.pull_head_repo_id = self.env['runbot.repo'].search(['name', 'like', '%%:%s' % pull_head_repo_name)], limit=1)
+                        branch.pull_head_repo_id = self.env['runbot.repo'].search([('name', 'like', '%%:%s' % pull_head_repo_name)], limit=1)
             else:
                 branch.branch_name = ''
 
