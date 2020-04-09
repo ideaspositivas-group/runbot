@@ -44,7 +44,7 @@
                                 </td>
                                 <td><t t-esc="build.global_result" /></td>
                                 <td><t t-esc="build.global_state" /></td>
-                                <td><t t-esc="build.real_build.host" /></td>
+                                <td><t t-esc="build.host" /></td>
                                 <td><t t-esc="build.build_time" /></td>
                                 <td><t t-esc="build.build_type" /></td>
                             </tr>

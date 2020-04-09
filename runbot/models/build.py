@@ -23,7 +23,7 @@ from subprocess import CalledProcessError
 _logger = logging.getLogger(__name__)
 
 result_order = ['ok', 'warn', 'ko', 'skipped', 'killed', 'manually_killed']
-state_order = ['pending', 'testing', 'waiting', 'running', 'duplicate', 'done']
+state_order = ['pending', 'testing', 'waiting', 'running', 'done']
 
 COPY_WHITELIST = [
     "branch_id",
@@ -54,19 +54,18 @@ def make_selection(array):
 
 
 class BuildParameters(models.Model):
-    _name = "runbot.builds.params"
+    _name = "runbot.build.params"
     _description = "All information used by a build to run, should be unique and set on create only"
 
-    trigger_id = fields.Many2one('repo.trigger', 'Trigger that create this build', readonly=True)
-
+    trigger_id = fields.Many2one('runbot.trigger', 'Trigger that created this build', readonly=True)
+    project_id = fields.Many2one('runbot.project', required=True) # mostly needed to define a dest
+    # on param or on build?
     # execution parametter
     dependency_ids = fields.One2many('runbot.build.dependency', 'build_id', copy=True)
-    version_id = fields.Many2one('runbot.version')
+    version_id = fields.Many2one('runbot.version', related='project_id.version_id')
     config_data = JsonDictField('Config Data')
 
     # other informations
-    description = fields.Char('Description', help='Informative description')
-    md_description = fields.Char(compute='_compute_md_description', String='MD Parsed Description', help='Informative description markdown parsed')
     extra_params = fields.Char('Extra cmd args')
     config_id = fields.Many2one(
         'runbot.build.config', 'Run Config', required=True,
@@ -76,11 +75,11 @@ class BuildParameters(models.Model):
                                     ],
                                 default='soft',
                                 string='Source export path mode')
-    builds_refs = fields.One2many('build.ref', 'build_params_id')
+    builds_refs = fields.One2many('runbot.build.ref', 'build_params_id')
     # problem for dependencies and path_mode.
     # they are change for upgrade, need commit in another version.
     # a new BuildParameters will be created in a subbuild: not cool
-    # would it be possible to define in advance all depepdencies? 
+    # would it be possible to define in advance all depepdencies?
     # upgrade: need a nightly build in 12 and in 13.
     # master: need a nightly build in 12.3
     # 12.3 need a last build of master
@@ -90,13 +89,12 @@ class BuildParameters(models.Model):
     # other solution: ignore this, will be time setted, subbuild will create new params
 
 class BuildRef(models.Model):
-    _name = 'build.ref'
+    _name = 'runbot.build.ref'
     _description = 'build result used for dump or dependencies as reference for another build'
 
-    build_params_id = fields.Many2one('runbot.builds.params')
+    build_params_id = fields.Many2one('runbot.build.params')
     ref_config_descriptor = fields.Many2one('runbot.build.ref.descriptor')
     key = fields.Char('key')
-    build_id = fields.Many2one('runbot.build')
 
 class BuildResults(models.Model):
     # remove duplicate management
@@ -119,8 +117,13 @@ class BuildResults(models.Model):
     # -> commit corresponding to repo of trigger_id
     # -> display all?
 
-    build_params = fields.Many2one('runbot.build.params')
-    sequence = fields.Integer('Sequence')  # todo remove
+    params_id = fields.Many2one('runbot.build.params')
+    config_id = fields.Many2one('runbot.build.config', related="params_id.config_id")
+    trigger_id = fields.Many2one('runbot.build.config', related="params_id.trigger_id")
+    project_id = fields.Many2one('runbot.project', related='params_id.project_id', stored=True)  # mostly needed to define a dest
+    description = fields.Char('Description', help='Informative description')
+    md_description = fields.Char(compute='_compute_md_description', String='MD Parsed Description', help='Informative description markdown parsed')
+
     # state machine
     global_state = fields.Selection(make_selection(state_order), string='Status', compute='_compute_global_state', store=True)
     local_state = fields.Selection(make_selection(state_order), string='Build Status', default='pending', required=True, index=True)
@@ -174,7 +177,6 @@ class BuildResults(models.Model):
     hidden = fields.Boolean("Don't show build on main page", default=False) # todo is it still usefull? 
     children_ids = fields.One2many('runbot.build', 'parent_id')
 
-    config_id = fields.Many2one('runbot.build.config', 'Run Config', required=True, raise_if_not_found=False)
     # config of top_build is inherithed from params, but subbuild will have different configs
 
     orphan_result = fields.Boolean('No effect on the parent result', default=False)
@@ -189,12 +191,10 @@ class BuildResults(models.Model):
         for build in self:
             build.log_list = ','.join({step.name for step in build.config_id.step_ids() if step._has_log()})
 
-    @api.depends('children_ids.global_state', 'local_state', 'duplicate_id.global_state')
+    @api.depends('children_ids.global_state', 'local_state')
     def _compute_global_state(self):
         for record in self:
-            if record.duplicate_id:
-                record.global_state = record.duplicate_id.global_state
-            elif record.global_state == 'done' and self.local_state == 'done':
+            if record.global_state == 'done' and self.local_state == 'done':
                 # avoid to recompute if done, mostly important whith many orphan childrens
                 record.global_state = 'done'
             else:
@@ -241,12 +241,10 @@ class BuildResults(models.Model):
 
     # random note: need to count hidden in pending and testing build displayed in frontend
 
-    @api.depends('children_ids.global_result', 'local_result', 'duplicate_id.global_result', 'children_ids.orphan_result')
+    @api.depends('children_ids.global_result', 'local_result', 'children_ids.orphan_result')
     def _compute_global_result(self):
         for record in self:
-            if record.duplicate_id:
-                record.global_result = record.duplicate_id.global_result
-            elif record.local_result and record._get_result_score(record.local_result) >= record._get_result_score('ko'):
+            if record.local_result and record._get_result_score(record.local_result) >= record._get_result_score('ko'):
                 record.global_result = record.local_result
             else:
                 children_ids = [child for child in record.children_ids if not child.orphan_result]
@@ -269,15 +267,10 @@ class BuildResults(models.Model):
     def _get_result_score(self, result):
         return result_order.index(result)
 
-    @api.depends('active_step', 'duplicate_id.active_step')
+    @api.depends('active_step')
     def _compute_job(self):
         for build in self:
-            build.job = build.real_build.active_step.name
-
-    @api.depends('duplicate_id')
-    def _compute_real_build(self):
-        for build in self:
-            build.real_build = build.duplicate_id or build
+            build.job = build.active_step.name
 
     def copy_data(self, default=None):
         values = super().copy_data(default)[0]
@@ -339,67 +332,67 @@ class BuildResults(models.Model):
             for dep_vals in dep_create_vals:
                 self.env['runbot.build.dependency'].sudo().create(dep_vals)
 
-        if not self.env.context.get('force_rebuild') and not vals.get('build_type') == 'rebuild':
-            # detect duplicate
-            duplicate_id = None
-            domain = [
-                ('repo_id', 'in', (build_id.repo_id.duplicate_id.id, build_id.repo_id.id)),  # before, was only looking in repo.duplicate_id looks a little better to search in both
-                ('id', '!=', build_id.id),
-                ('name', '=', build_id.name),
-                ('duplicate_id', '=', False),
-                # ('build_type', '!=', 'indirect'),  # in case of performance issue, this little fix may improve performance a little but less duplicate will be detected when pushing an empty branch on repo with duplicates
-                '|', ('local_result', '=', False), ('local_result', '!=', 'skipped'),  # had to reintroduce False posibility for selections
-                ('config_id', '=', build_id.config_id.id),
-                ('extra_params', '=', build_id.extra_params),
-                ('config_data', '=', build_id.config_data or False),
-            ]
-            candidates = self.search(domain)
+        #if not self.env.context.get('force_rebuild') and not vals.get('build_type') == 'rebuild':
+        #    # detect duplicate
+        #    duplicate_id = None
+        #    domain = [
+        #        ('repo_id', 'in', (build_id.repo_id.duplicate_id.id, build_id.repo_id.id)),  # before, was only looking in repo.duplicate_id looks a little better to search in both
+        #        ('id', '!=', build_id.id),
+        #        ('name', '=', build_id.name),
+        #        ('duplicate_id', '=', False),
+        #        # ('build_type', '!=', 'indirect'),  # in case of performance issue, this little fix may improve performance a little but less duplicate will be detected when pushing an empty branch on repo with duplicates
+        #        '|', ('local_result', '=', False), ('local_result', '!=', 'skipped'),  # had to reintroduce False posibility for selections
+        #        ('config_id', '=', build_id.config_id.id),
+        #        ('extra_params', '=', build_id.extra_params),
+        #        ('config_data', '=', build_id.config_data or False),
+        #    ]
+        #    candidates = self.search(domain)
 
-            nb_deps = len(build_id.dependency_ids)
-            if candidates and nb_deps:
-                # check that all depedencies are matching.
+        #    nb_deps = len(build_id.dependency_ids)
+        #    if candidates and nb_deps:
+        #        # check that all depedencies are matching.
 
-                # Note: We avoid to compare closest_branch_id, because the same hash could be found on
-                # 2 different branches (pr + branch).
-                # But we may want to ensure that the hash is comming from the right repo, we dont want to compare community
-                # hash with enterprise hash.
-                # this is unlikely to happen so branch comparaison is disabled
-                self.env.cr.execute("""
-                    SELECT DUPLIDEPS.build_id
-                    FROM runbot_build_dependency as DUPLIDEPS
-                    JOIN runbot_build_dependency as BUILDDEPS
-                    ON BUILDDEPS.dependency_hash = DUPLIDEPS.dependency_hash
-                    AND BUILDDEPS.build_id = %s
-                    AND DUPLIDEPS.build_id in %s
-                    GROUP BY DUPLIDEPS.build_id
-                    HAVING COUNT(DUPLIDEPS.*) = %s
-                    ORDER BY DUPLIDEPS.build_id  -- remove this in case of performance issue, not so usefull
-                    LIMIT 1
-                """, (build_id.id, tuple(candidates.ids), nb_deps))
-                filtered_candidates_ids = self.env.cr.fetchall()
+        #        # Note: We avoid to compare closest_branch_id, because the same hash could be found on
+        #        # 2 different branches (pr + branch).
+        #        # But we may want to ensure that the hash is comming from the right repo, we dont want to compare community
+        #        # hash with enterprise hash.
+        #        # this is unlikely to happen so branch comparaison is disabled
+        #        self.env.cr.execute("""
+        #            SELECT DUPLIDEPS.build_id
+        #            FROM runbot_build_dependency as DUPLIDEPS
+        #            JOIN runbot_build_dependency as BUILDDEPS
+        #            ON BUILDDEPS.dependency_hash = DUPLIDEPS.dependency_hash
+        #            AND BUILDDEPS.build_id = %s
+        #            AND DUPLIDEPS.build_id in %s
+        #            GROUP BY DUPLIDEPS.build_id
+        #            HAVING COUNT(DUPLIDEPS.*) = %s
+        #            ORDER BY DUPLIDEPS.build_id  -- remove this in case of performance issue, not so usefull
+        #            LIMIT 1
+        #        """, (build_id.id, tuple(candidates.ids), nb_deps))
+        #        filtered_candidates_ids = self.env.cr.fetchall()
 
-                if filtered_candidates_ids:
-                    duplicate_id = filtered_candidates_ids[0]
-            else:
-                duplicate_id = candidates[0].id if candidates else False
+        #        if filtered_candidates_ids:
+        #            duplicate_id = filtered_candidates_ids[0]
+        #    else:
+        #        duplicate_id = candidates[0].id if candidates else False
 
-            if duplicate_id:
-                extra_info.update({'local_state': 'duplicate', 'duplicate_id': duplicate_id})
-                # maybe update duplicate priority if needed
+        #    if duplicate_id:
+        #        extra_info.update({'local_state': 'duplicate', 'duplicate_id': duplicate_id})
+        #        # maybe update duplicate priority if needed
 
-            docker_source_folders = set()
-            for commit in build_id._get_all_commit():
-                docker_source_folder = build_id._docker_source_folder(commit)
-                if docker_source_folder in docker_source_folders:
-                    extra_info['commit_path_mode'] = 'rep_sha'
-                    continue
-                docker_source_folders.add(docker_source_folder)
+        docker_source_folders = set()
+        for commit in build_id._get_all_commit():
+            docker_source_folder = build_id._docker_source_folder(commit)
+            if docker_source_folder in docker_source_folders:
+                extra_info['commit_path_mode'] = 'rep_sha'
+                continue
+            docker_source_folders.add(docker_source_folder)
 
         if extra_info:
             build_id.write(extra_info)
 
-        if build_id.local_state == 'duplicate' and build_id.duplicate_id.global_state in ('running', 'done'):
-            build_id._github_status()
+        #if build_id.local_state == 'duplicate' and build_id.duplicate_id.global_state in ('running', 'done'):
+        #    build_id._github_status()
         return build_id
 
     def write(self, values):
@@ -412,8 +405,6 @@ class BuildResults(models.Model):
         for build in self:
             assert not local_result or local_result == self._get_worst_result([build.local_result, local_result])  # dont write ok on a warn/error build
         res = super(BuildResults, self).write(values)
-        for build in self:
-            assert bool(not build.duplicate_id) ^ (build.local_state == 'duplicate')  # don't change duplicate state without removing duplicate id.
         if 'log_counter' in values: # not 100% usefull but more correct ( see test_ir_logging)
             self.flush()
         return res
@@ -424,22 +415,29 @@ class BuildResults(models.Model):
             if build.parent_id and build.parent_id.local_state in ('running', 'done'):
                     build.parent_id.update_build_end()
 
-    @api.depends('name', 'branch_id.name')
+    @api.depends('project_id.name')
     def _compute_dest(self):
+        # name is not really usefull, but this is a big change
+        # - need to move all db/folder/docker/regex  + ngnix + ...
+
+        # using project_id means that we need to have it on a build to make it unique
+
         for build in self:
-            if build.name:
-                nickname = build.branch_id.name.split('/')[2]
+            if build.id:
+                nickname = build.project_id.name
                 nickname = re.sub(r'"|\'|~|\:', '', nickname)
                 nickname = re.sub(r'_|/|\.', '-', nickname)
-                build.dest = ("%05d-%s-%s" % (build.id or 0, nickname[:32], build.name[:6])).lower()
+                build.dest = ("%05d-%s" % (build.id or 0, nickname[:32])).lower()  # could be 38
+            # note, regex check for dest will be simplified making it dangerous especially for dropdb
+            # idea: add a database model to list them.
 
-    @api.depends('repo_id', 'port', 'dest', 'host', 'duplicate_id.domain')
+    @api.depends('port', 'dest', 'host')
     def _compute_domain(self):
-        domain = self.env['ir.config_parameter'].sudo().get_param('runbot.runbot_domain', fqdn())
+        icp = self.env['ir.config_parameter'].sudo()
+        nginx = icp.get_param('runbot.runbot_nginx', True)  # or just force nginx?
+        domain = icp.get_param('runbot.runbot_domain', fqdn())
         for build in self:
-            if build.duplicate_id:
-                build.domain = build.duplicate_id.domain
-            elif build.repo_id.nginx:
+            if nginx:
                 build.domain = "%s.%s" % (build.dest, build.host)
             else:
                 build.domain = "%s:%s" % (domain, build.port)
@@ -448,38 +446,32 @@ class BuildResults(models.Model):
         for build in self:
             build.build_url = "/runbot/build/%s" % build.id
 
-    @api.depends('job_start', 'job_end', 'duplicate_id.job_time')
+    @api.depends('job_start', 'job_end')
     def _compute_job_time(self):
         """Return the time taken by the tests"""
         for build in self:
-            if build.duplicate_id:
-                build.job_time = build.duplicate_id.job_time
-            elif build.job_end and build.job_start:
+            if build.job_end and build.job_start:
                 build.job_time = int(dt2time(build.job_end) - dt2time(build.job_start))
             elif build.job_start:
                 build.job_time = int(time.time() - dt2time(build.job_start))
             else:
                 build.job_time = 0
 
-    @api.depends('build_start', 'build_end', 'global_state', 'duplicate_id.build_time')
+    @api.depends('build_start', 'build_end', 'global_state')
     def _compute_build_time(self):
         for build in self:
-            if build.duplicate_id:
-                build.build_time = build.duplicate_id.build_time
-            elif build.build_end and build.global_state != 'waiting':
+            if build.build_end and build.global_state != 'waiting':
                 build.build_time = int(dt2time(build.build_end) - dt2time(build.build_start))
             elif build.build_start:
                 build.build_time = int(time.time() - dt2time(build.build_start))
             else:
                 build.build_time = 0
 
-    @api.depends('job_start', 'duplicate_id.build_age')
+    @api.depends('job_start')
     def _compute_build_age(self):
         """Return the time between job start and now"""
         for build in self:
-            if build.duplicate_id:
-                build.build_age = build.duplicate_id.build_age
-            elif build.job_start:
+            if build.job_start:
                 build.build_age = int(time.time() - dt2time(build.build_start))
             else:
                 build.build_age = 0
@@ -555,7 +547,7 @@ class BuildResults(models.Model):
         """Mark builds ids as skipped"""
         if reason:
             self._logger('skip %s', reason)
-        self.write({'local_state': 'done', 'local_result': 'skipped', 'duplicate_id': False})
+        self.write({'local_state': 'done', 'local_result': 'skipped'})
 
     def _build_from_dest(self, dest):
         if dest_reg.match(dest):
@@ -948,7 +940,7 @@ class BuildResults(models.Model):
                 continue
             build._log('kill', 'Kill build %s' % build.dest)
             docker_stop(build._get_docker_name(), build._path())
-            v = {'local_state': 'done', 'requested_action': False, 'active_step': False, 'duplicate_id': False, 'job_end': now()}  # what if duplicate? state done?
+            v = {'local_state': 'done', 'requested_action': False, 'active_step': False, 'job_end': now()}
             if not build.build_end:
                 v['build_end'] = now()
             if result:
@@ -959,6 +951,8 @@ class BuildResults(models.Model):
             self.invalidate_cache()
 
     def _ask_kill(self, lock=True, message=None):
+        # if build remains in same project, it's ok like that
+        # if build can be cross project, need to check number of ref to build
         if lock:
             self.env.cr.execute("""SELECT id FROM runbot_build WHERE parent_path like %s FOR UPDATE""", ['%s%%' % self.parent_path])
         self.ensure_one()
@@ -967,26 +961,18 @@ class BuildResults(models.Model):
         build = self
         message = message or 'Killing build %s, requested by %s (user #%s)' % (build.dest, user.name, uid)
         build._log('_ask_kill', message)
-        if build.duplicate_id:
-            if self.branch_id.pull_branch_name == self.duplicate_id.branch_id.pull_branch_name:
-                build = build.duplicate_id
-            else:
-                build._skip()
-                return
         if build.local_state == 'pending':
             build._skip()
         elif build.local_state in ['testing', 'running']:
             build.requested_action = 'deathrow'
-        for child in build.children_ids:  # should we filter build that are target of a duplicate_id?
-            if not child.duplicate_id:
-                child._ask_kill(lock=False)
+        for child in build.children_ids:
+            child._ask_kill(lock=False)
 
     def _wake_up(self):
-        build = self.real_build
-        if build.local_state != 'done':
-            build._log('wake_up', 'Impossibe to wake up, state is not done')
+        if self.local_state != 'done':
+            self._log('wake_up', 'Impossibe to wake up, state is not done')
         else:
-            build.requested_action = 'wake_up'
+            self.requested_action = 'wake_up'
 
     def _get_all_commit(self):
         # TODO replace by runbot.commit

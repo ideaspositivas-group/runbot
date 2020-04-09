@@ -176,8 +176,8 @@ class Runbot(Controller):
         if builds:
             last_build = False
             for build in builds:
-                if build.real_build.local_state == 'running':
-                    last_build = build.real_build
+                if build.local_state == 'running':
+                    last_build = build
                     break
 
             if not last_build:

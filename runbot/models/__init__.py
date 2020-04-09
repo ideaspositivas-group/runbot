@@ -4,6 +4,7 @@ from . import repo
 from . import commit
 from . import branch
 from . import build
+from . import project
 from . import event
 from . import build_dependency
 from . import build_config
@@ -12,5 +13,4 @@ from . import host
 from . import build_error
 from . import build_stat
 from . import build_stat_regex
-from . import project
 from . import res_config_settings

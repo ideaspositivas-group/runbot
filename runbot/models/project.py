@@ -24,8 +24,8 @@ class ProjectCategory(models.Model):
     _name = 'runbot.project.category'
     _description = 'Category'
 
-    name = fields.Char('Project group name', required=True, unique=True, help="Name of the base branch")
-    trigger_ids = fields.One2many('Project group name', required=True, unique=True, help="Name of the base branch")
+    name = fields.Char('Category name', required=True, unique=True, help="Name of the base branch")
+    trigger_ids = fields.One2many('runbot.trigger', 'category_id', 'Triggers', required=True, unique=True, help="Name of the base branch")
 
 class Project(models.Model):
     _name = "runbot.project"
@@ -36,6 +36,7 @@ class Project(models.Model):
     sticky = fields.Boolean(stored=True)
     is_base = fields.Boolean(compute='compute_is_base', stored=True)
     version_id = fields.Many2one('runbot.version', 'Version')
+    no_build = fields.Boolean('No build')
     # version can change in case of retarget or manual operation from user
 
 
@@ -49,7 +50,7 @@ class Project(models.Model):
 
     def _from_branch(self, branch):
         name = branch.reference_name
-        project_category_id = branch.repo_id.repo_group.default_project_category_id
+        project_category_id = branch.repo_id.repo_group_id.default_project_category_id
         project = self.search([('name', '=', name), ('project_category_id', '=', project_category_id)])
         if not project:
             self.create({
@@ -65,7 +66,7 @@ class Project(models.Model):
     #    if self.is_base:
     #        return self
     #    name = branch.reference_name
-    #    project_category_id = branch.repo_id.repo_group.default_project_category_id
+    #    project_category_id = branch.repo_id.repo_group_id.default_project_category_id
     #    base_projects = self.search([('is_base', '=', True), ('project_category_id', '=', project_category_id)])
     #    master_project = self.browse()
     #    for project in base_projects:
@@ -77,9 +78,9 @@ class Project(models.Model):
 
     def _get_preparing_instance(self):
         # find last project instance or create one
-        preparing = self.env['runbot.project.instance'].search([('state', '=', 'preparing'), ('project_id', '=', self.id)])
+        preparing = self.env['runbot.instance'].search([('state', '=', 'preparing'), ('project_id', '=', self.id)])
         if not preparing:
-            preparing = self.env['runbot.project.instance'].create({
+            preparing = self.env['runbot.instance'].create({
                 'last_update': fields.Datetime.Now(),
                 'project_id': self,
                 'state': 'creating',
@@ -95,13 +96,13 @@ class Project(models.Model):
 
 
 class ProjectInstance(models.Model):
-    _name = "runbot.project.instance"
+    _name = "runbot.instance"
     _description = "Project instance"
     _inherit = "mail.thread"
 
     last_update = fields.Datetime('Last ref update')
     project_id = fields.Many2one('runbot.project', required=True)
-    project_commit_ids = fields.One2many('runbot.project.commit', 'project_instance_id')
+    project_commit_ids = fields.One2many('runbot.instance.commit', 'project_instance_id')
     builds = fields.Many2many('runbot.build')
     state = fields.Selection([('preparing', 'Preparing'), ('ready', 'Ready')])
 
@@ -112,15 +113,15 @@ class ProjectInstance(models.Model):
     def _start(self):
         # For all commit on real branches:
         for project_commit in self.project_commit_ids:
-            triggers = self.env['repo.trigger'].search([
+            triggers = self.env['runbot.trigger'].search([
                 ('project_category_id', '=', self.project_category_id),
-                ('repos_group_ids', 'in', project_commit.repo_group.id)])
+                ('repos_group_ids', 'in', project_commit.repo_group_id.id)])
             print('trigger', triggers)
             # todo execute triggers
 
 
 class ProjectInstanceCommit(models.Model):
-    _name = "runbot.project.instance.commit"
+    _name = "runbot.instance.commit"
     _description = "Project instance commit"
 
     commit_id = fields.Many2one('runbot.commit')
@@ -130,10 +131,11 @@ class ProjectInstanceCommit(models.Model):
 
 
 class ProjectInstanceBuild(models.Model):
-    _name = 'runbot.project.instance.build'
+    _name = 'runbot.instance.build'
     _description = 'Link between a project instance and a build'
 
-    project_instance_id = fields.Many2one('runbot.project.instance')
+
+    project_instance_id = fields.Many2one('runbot.instance')
     build_id = fields.Many2one('runbot.build')
     link_type = fields.Selection([('created', 'Build created'),('matched', 'Existing build matched')]) # rebuild type? 
     active = fields.Boolean('Attached')

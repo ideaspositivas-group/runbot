@@ -95,7 +95,7 @@ class RunbotErrorLog(models.Model):
     path = fields.Char(string='Path', readonly=True)
     line = fields.Char(string='Line', readonly=True)
     build_id = fields.Many2one('runbot.build', string='Build', readonly=True)
-    bu_name = fields.Char(String='Build name', readonly=True)
+    #bu_name = fields.Char(String='Build name', readonly=True) as aggregate
     dest = fields.Char(String='Build dest', readonly=True)
     local_state = fields.Char(string='Local state', readonly=True)
     local_result = fields.Char(string='Local result', readonly=True)
@@ -108,12 +108,9 @@ class RunbotErrorLog(models.Model):
     config_id = fields.Many2one('runbot.build.config', string='Config', readonly=True)
     parent_id = fields.Many2one('runbot.build', string='Parent build', readonly=True)
     hidden = fields.Boolean(string='Hidden', readonly=True)
-    branch_id = fields.Many2one('runbot.branch', string='Branch', readonly=True)
-    branch_name = fields.Char(string='Branch name', readonly=True)
-    branch_sticky = fields.Boolean(string='Sticky', readonly=True)
-    repo_id = fields.Many2one('runbot.repo', string='Repo', readonly=True)
-    repo_name = fields.Char(string='Repo name', readonly=True)
-    repo_short_name = fields.Char(compute='_compute_repo_short_name', readonly=True)
+    #project_id = fields.Many2one('runbot.project', string='Project', readonly=True)
+    #project_name = fields.Char(string='Project name', readonly=True)
+    #project_sticky = fields.Boolean(string='Sticky', readonly=True)
     build_url = fields.Char(compute='_compute_build_url', readonly=True)
 
     def _compute_repo_short_name(self):
@@ -152,32 +149,19 @@ class RunbotErrorLog(models.Model):
                 l.path  AS path,
                 l.line  AS line,
                 bu.id  AS build_id,
-                bu.name AS bu_name,
                 bu.dest AS dest,
                 bu.local_state  AS local_state,
                 bu.local_result  AS local_result,
                 bu.global_state  AS global_state,
                 bu.global_result  AS global_result,
                 bu.create_date  AS bu_create_date,
-                bu.committer  AS committer,
-                bu.author  AS author,
                 bu.host  AS host,
-                bu.config_id  AS config_id,
                 bu.parent_id  AS parent_id,
-                bu.hidden  AS hidden,
-                br.id  AS branch_id,
-                br.branch_name  AS branch_name,
-                br.sticky AS branch_sticky,
-                re.id  AS repo_id,
-                re.name  AS repo_name
+                bu.hidden  AS hidden
             FROM
                 ir_logging AS l
             JOIN
                 runbot_build bu ON l.build_id = bu.id
-            JOIN
-                runbot_branch br ON br.id = bu.branch_id
-            JOIN
-                runbot_repo re ON br.repo_id = re.id
             WHERE
                 l.level = 'ERROR'
         )""")

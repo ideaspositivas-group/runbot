@@ -31,22 +31,22 @@ class RunbotException(Exception):
     pass
 
 
-class RepoTrigger():
+class RepoTrigger(models.Model):
     """
     List of repo parts that must be part of the same project
     """
 
-    _name = 'repo.trigger'
+    _name = 'runbot.trigger'
     _inherit = 'mail.thread'
+    _description = 'Triggers'
 
     name = fields.Char("Repo trigger descriptions")
     category_id = fields.Many2one('runbot.project.category')  # main/security/runbot
-    repos_group_ids = fields.Many2many('repo.group', "Triggers")
-    dependency_repo_ids = fields.Many2many('repo.group', "Dependencies")
+    repos_group_ids = fields.Many2many('runbot.repo.group', "Triggers")
+    dependency_repo_ids = fields.Many2many('runbot.repo.group', "Dependencies")
     config_id = fields.Many2one('runbot.build.config', 'Config')
-    # find a way to store needed dump or extra dependencies (migrations tests)
-    build_refs_descriptors_ids = fields.One2many('')
     # maybe add many2many instead with type on config? maybe latter
+    #multiple trigger vs multiple config on trigger
 
     #-odoo
     #    -odoo                  (Split)
@@ -79,7 +79,7 @@ class RepoGroup(models.Model):
     """
     Regroups repo and it duplicates (forks): odoo+odoo-dev for each repo
     """
-    _name = 'repo.group'
+    _name = 'runbot.repo.group'
     _inherit = 'mail.thread'
     _description = 'Main repository and forks'
 
@@ -95,12 +95,11 @@ class RepoGroup(models.Model):
                                      ('all', 'All modules (including dependencies)')],
                                     default='all',
                                     string="Other modules to install automatically")
-    nginx = fields.Boolean('Nginx')
     group_ids = fields.Many2many('res.groups', string='Limited to groups')
     server_files = fields.Char('Server files', help='Comma separated list of possible server files')  # odoo-bin,openerp-server,openerp-server.py
     manifest_files = fields.Char('Manifest files', help='Comma separated list of possible manifest files', default='__manifest__.py')
     addons_paths = fields.Char('Addons paths', help='Comma separated list of possible addons path', default='')
-    no_build = fields.Boolean("No build", help="Forbid creation of build on this repo", default=False)
+
 
     #odoo
     #   -odoo/odoo
@@ -129,7 +128,7 @@ class RunbotRepo(models.Model):
     _description = "Repo"
     _order = 'sequence, id'
 
-    repo_group = fields.Many2one('repo.group')
+    repo_group_id = fields.Many2one('runbot.repo.group')
     name = fields.Char('Repository', required=True)
     short_name = fields.Char('Short name', compute='_compute_short_name', store=False, readonly=True)
     sequence = fields.Integer('Sequence')
@@ -425,19 +424,17 @@ class RunbotRepo(models.Model):
                         'date': dateutil.parser.parse(date[:19]),
                     })
                 branch.head = commit
-                if branch.no_auto_build or branch.no_build or (branch.repo_id.no_build and not branch.rebuild_requested):
+                project = branch.project_id
+                if project.no_buld:
                     continue
-                if branch.rebuild_requested:
-                    branch.rebuild_requested = False
 
-
-                project = self.env['runbot.project']._from_branch(branch)
-                project_instance = project._get_preparing_instance()
+                # todo move following logic to project ? project._notify_new_commit()
+                project_instance = project._get_preparing_instance() 
                 project_instance._add_commit(commit)
 
-                if not project.sticky:
+                if not project.sticky: # todo move this logic to project?
                     # pending builds are skipped as we have a new ref
-                    builds_to_skip = Build.search(
+                    builds_to_skip = self.env['runbot.build'].search(
                         [('project_id', '=', project.id), ('local_state', '=', 'pending')],
                         order='sequence asc')
                     builds_to_skip._skip(reason='New ref found')
@@ -670,6 +667,8 @@ class RunbotRepo(models.Model):
         return self.env.get('ir.config_parameter').get_param('runbot.runbot_domain', fqdn())
 
     def _reload_nginx(self):
+        # TODO move this elsewhere
+        env = self.env
         settings = {}
         settings['port'] = config.get('http_port')
         settings['runbot_static'] = os.path.join(get_module_resource('runbot', 'static'), '')
@@ -677,11 +676,14 @@ class RunbotRepo(models.Model):
         settings['nginx_dir'] = nginx_dir
         settings['re_escape'] = re.escape
         settings['fqdn'] = fqdn()
-        nginx_repos = self.search([('nginx', '=', True)], order='id')
-        if nginx_repos:
-            settings['builds'] = self.env['runbot.build'].search([('repo_id', 'in', nginx_repos.ids), ('local_state', '=', 'running'), ('host', '=', fqdn())])
 
-            nginx_config = self.env['ir.ui.view'].render_template("runbot.nginx_config", settings)
+        icp = env['ir.config_parameter'].sudo()
+        nginx = icp.get_param('runbot.runbot_nginx', True)  # or just force nginx?
+
+        if nginx:
+            settings['builds'] = env['runbot.build'].search([('local_state', '=', 'running'), ('host', '=', fqdn())])
+
+            nginx_config = env['ir.ui.view'].render_template("runbot.nginx_config", settings)
             os.makedirs(nginx_dir, exist_ok=True)
             content = None
             nginx_conf_path = os.path.join(nginx_dir, 'nginx.conf')

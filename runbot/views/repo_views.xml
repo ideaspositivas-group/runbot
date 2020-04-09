@@ -1,7 +1,51 @@
 <odoo>
   <data>
     <menuitem name="Runbot" id="runbot_menu_root"/>
-    
+  
+        <record id="repo_trigger_form" model="ir.ui.view">
+        <field name="name">runbot.repo.trigger.form</field>
+        <field name="model">runbot.trigger</field>
+        <field name="arch" type="xml">
+          <form>
+            <header>
+            </header>
+            <sheet>
+              <group name="repo_group">
+                <field name="name"/>
+                <field name="category_id"/>
+                <field name="repos_group_ids"/>
+                <field name="dependency_repo_ids"/>
+                <field name="config_id"/>
+              </group>
+            </sheet>
+          </form>
+        </field>
+    </record>
+
+      <record id="repo_group_form" model="ir.ui.view">
+        <field name="name">runbot.repo.group.form</field>
+        <field name="model">runbot.repo.group</field>
+        <field name="arch" type="xml">
+          <form>
+            <header>
+            </header>
+            <sheet>
+              <group name="repo_group">
+                <field name="name"/>
+                <field name="default_project_category_id"/>
+                <field name="modules"/>
+                <field name="modules_auto"/>
+                <field name="group_ids"  widget="many2many_tags"/>
+                <field name="server_files"/>
+                <field name="manifest_files"/>
+                <field name="addons_paths"/>
+                <field name="repos"/>
+              </group>
+            </sheet>
+          </form>
+        </field>
+    </record>
+
     <record id="repo_form" model="ir.ui.view">
         <field name="name">runbot.repo.form</field>
         <field name="model">runbot.repo</field>
@@ -13,20 +57,10 @@
               <group name="repo_group">
                 <field name="sequence"/>
                 <field name="name"/>
+                <field name="repo_group_id"/>
                 <field name="mode"/>
-                <field name="no_build"/>
-                <field name="nginx"/>
-                <field name="duplicate_id"/>
-                <field name="dependency_ids" widget="many2many_tags"/>
-                <field name="modules"/>
-                <field name="modules_auto"/>
                 <field name="token"/>
-                <field name="group_ids"  widget="many2many_tags"/>
                 <field name="hook_time"/>
-                <field name="config_id"/>
-                <field name="server_files"/>
-                <field name="manifest_files"/>
-                <field name="addons_paths"/>
               </group>
             </sheet>
           </form>

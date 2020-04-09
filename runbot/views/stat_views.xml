@@ -8,9 +8,6 @@
             <tree string="Statistics">
                 <field name="config_step_id"/>
                 <field name="build_id"/>
-                <field name="build_name"/>
-                <field name="repo_name"/>
-                <field name="branch_name"/>
                 <field name="key"/>
                 <field name="value"/>
             </tree>

@@ -1,14 +1,21 @@
 <odoo>
   <data>
-    <record id="build_form" model="ir.ui.view">
-        <field name="model">runbot.build</field>
+    
+
+
+    <record id="build_form_params" model="ir.ui.view">
+        <field name="model">runbot.build.params</field>
         <field name="arch" type="xml">
-            <form string="Build">
+            <form string="Build Params">
                 <sheet>
                     <group>
-                        <field name="repo_id"/>
-                        <field name="branch_id"/>
-                        <field name="name"/>
+                        <field name="trigger_id"/>
+                        <field name="project_id"/>
+                        <field name="config_id"/>
+                        <field name="version_id"/>
+                        <field name="config_data"/>
+                        <field name="extra_params"/>
+
                         <field name="dependency_ids">
                             <tree>
                                 <field name="dependecy_repo_id"/>
@@ -17,12 +24,22 @@
                                 <field name="match_type"/>
                             </tree>
                         </field>
-                        <field name="date"/>
-                        <field name="author"/>
-                        <field name="author_email" groups="base.group_no_one"/>
-                        <field name="committer" groups="base.group_no_one"/>
-                        <field name="committer_email" groups="base.group_no_one"/>
-                        <field name="subject"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+
+
+    <record id="build_form" model="ir.ui.view">
+        <field name="model">runbot.build</field>
+        <field name="arch" type="xml">
+            <form string="Build">
+                <sheet>
+                    <group>
+                        <field name="description"/>
+                        <field name="params_id"/>
                         <field name="port" groups="base.group_no_one"/>
                         <field name="dest"/>
                         <field name="local_state"/>
@@ -39,10 +56,8 @@
                         <field name="build_end" groups="base.group_no_one"/>
                         <field name="build_time" groups="base.group_no_one"/>
                         <field name="build_age" groups="base.group_no_one"/>
-                        <field name="duplicate_id"/>
                         <field name="build_type"/>
                         <field name="config_id"/>
-                        <field name="config_data"/>
                         <field name="parent_id"/>
                         <field name="orphan_result"/>
                         <field name="hidden" groups="base.group_no_one"/>
@@ -70,11 +85,8 @@
         <field name="model">runbot.build</field>
         <field name="arch" type="xml">
             <tree string="Builds">
-                <field name="repo_id"/>
+                <field name="project_id"/>
                 <field name="dest"/>
-                <field name="date"/>
-                <field name="author"/>
-                <field name="committer"/>
                 <field name="global_state"/>
                 <field name="global_result"/>
                 <field name="port"/>
@@ -101,8 +113,8 @@
         <field name="arch" type="xml">
             <search string="Search builds">
                 <field name="id"/>
-                <field name="branch_id"/>
-                <field name="name"/>
+                <field name="project_id"/>
+                <field name="trigger_id"/>
                 <field name="global_state"/>
                 <field name="dest"/>
                 <filter string="Pending" name='pending' domain="[('global_state','=', 'pending')]"/>
@@ -111,8 +123,8 @@
                 <filter string="Done" name='done' domain="[('global_state','=','done')]"/>
                 <filter string="Duplicate" name='duplicate' domain="[('local_state','=', 'duplicate')]"/>
                 <group expand="0" string="Group By...">
-                    <filter string="Repo" name='repo' domain="[]" context="{'group_by':'repo_id'}"/>
-                    <filter string="Branch" name='branch' domain="[]" context="{'group_by':'branch_id'}"/>
+                    <filter string="Branch" name='branch' domain="[]" context="{'group_by':'project_id'}"/>
+                    <filter string="Branch" name='branch' domain="[]" context="{'group_by':'trigger_id'}"/>
                     <filter string="Status" name='status' domain="[]" context="{'group_by':'global_state'}"/>
                     <filter string="Result" name='result' domain="[]" context="{'group_by':'global_result'}"/>
                     <filter string="Start" name='start' domain="[]" context="{'group_by':'job_start'}"/>

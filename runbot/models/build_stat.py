@@ -54,14 +54,13 @@ class RunbotBuildStatSql(models.Model):
     config_step_name = fields.Char(String="Config Step name", readonly=True)
     build_id = fields.Many2one("runbot.build", string="Build", readonly=True)
     build_config_id = fields.Many2one("runbot.build.config", string="Config", readonly=True)
-    build_name = fields.Char(String="Build name", readonly=True)
+    #build_name = fields.Char(String="Build name", readonly=True) # todo arrayagg
     build_parent_path = fields.Char('Build Parent path')
     build_host = fields.Char(string="Host", readonly=True)
-    branch_id = fields.Many2one("runbot.branch", string="Branch", readonly=True)
-    branch_name = fields.Char(string="Branch name", readonly=True)
-    branch_sticky = fields.Boolean(string="Sticky", readonly=True)
-    repo_id = fields.Many2one("runbot.repo", string="Repo", readonly=True)
-    repo_name = fields.Char(string="Repo name", readonly=True)
+    #project_id = fields.Many2one("runbot.project", string="Project", readonly=True)
+    #project_name = fields.Char(string="Project name", readonly=True)
+    #project_sticky = fields.Boolean(string="Sticky", readonly=True)
+    #repo_name = fields.Char(string="Repo name", readonly=True) # todo arrayagg
 
     def init(self):
         """ Create SQL view for build stat """
@@ -75,15 +74,9 @@ class RunbotBuildStatSql(models.Model):
                 step.id AS config_step_id,
                 step.name AS config_step_name,
                 bu.id AS build_id,
-                bu.config_id AS build_config_id,
+                bp.config_id AS build_config_id,
                 bu.parent_path AS build_parent_path,
-                bu.name AS build_name,
-                bu.host AS build_host,
-                br.id AS branch_id,
-                br.branch_name AS branch_name,
-                br.sticky AS branch_sticky,
-                repo.id AS repo_id,
-                repo.name AS repo_name
+                bu.host AS build_host
             FROM
                 runbot_build_stat AS stat
             JOIN
@@ -91,8 +84,6 @@ class RunbotBuildStatSql(models.Model):
             JOIN
                 runbot_build bu ON stat.build_id = bu.id
             JOIN
-                runbot_branch br ON br.id = bu.branch_id
-            JOIN
-                runbot_repo repo ON br.repo_id = repo.id
+                runbot_build_params bp ON bu.params_id = bp.id
         )"""
         )

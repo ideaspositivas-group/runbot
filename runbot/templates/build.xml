@@ -2,8 +2,8 @@
 <odoo>
   <data>
     <template id="runbot.build_name">
-        <t t-if="bu.real_build.requested_action=='deathrow'"><i class="text-info fa fa-crosshairs"/> killing</t>
-        <t t-if="bu.real_build.requested_action=='wake_up'"><i class="text-info fa fa-coffee"/> waking up</t>
+        <t t-if="bu.requested_action=='deathrow'"><i class="text-info fa fa-crosshairs"/> killing</t>
+        <t t-if="bu.requested_action=='wake_up'"><i class="text-info fa fa-coffee"/> waking up</t>
         <t t-if="not bu.requested_action">
           <t t-if="bu.global_state=='pending'"><i class="text-default fa fa-pause"/> pending</t>
           <t t-if="bu.global_state in ('testing', 'waiting')">
@@ -28,8 +28,8 @@
     <template id="runbot.build_button">
         <div t-attf-class="pull-right">
             <div t-attf-class="btn-group {{klass}}">
-                <a t-if="bu.real_build.local_state=='running'" t-attf-href="http://{{bu['domain']}}/?db={{bu.real_build.dest}}-all" class="btn btn-primary" title="Sign in on this build" aria-label="Sign in on this build"><i class="fa fa-sign-in"/></a>
-                <a t-if="bu.real_build.local_state=='done' and bu.real_build.requested_action != 'wake_up'" href="#" data-runbot="wakeup" t-att-data-runbot-build="bu.real_build.id" class="btn btn-default" title="Wake up this build" aria-label="Wake up this build"><i class="fa fa-coffee"/></a>
+                <a t-if="bu.local_state=='running'" t-attf-href="http://{{bu['domain']}}/?db={{bu.dest}}-all" class="btn btn-primary" title="Sign in on this build" aria-label="Sign in on this build"><i class="fa fa-sign-in"/></a>
+                <a t-if="bu.local_state=='done' and bu.requested_action != 'wake_up'" href="#" data-runbot="wakeup" t-att-data-runbot-build="bu.id" class="btn btn-default" title="Wake up this build" aria-label="Wake up this build"><i class="fa fa-coffee"/></a>
                 <a t-attf-href="/runbot/build/{{bu['id']}}" class="btn btn-default" title="Build details" aria-label="Build details"><i class="fa fa-file-text-o"/></a>
                 <a t-if="show_commit_button" t-attf-href="https://#{repo.base}/commit/#{bu['name']}" class="btn btn-default" title="Open commit on GitHub" aria-label="Open commit on GitHub"><i class="fa fa-github"/></a>
                 <button class="btn btn-default dropdown-toggle" data-toggle="dropdown" title="Build options" aria-label="Build options" aria-expanded="false"><i class="fa fa-cog"/><span class="caret"></span></button>
@@ -37,9 +37,9 @@
                     <li t-if="bu.global_result=='skipped'" groups="runbot.group_runbot_admin">
                         <a href="#" data-runbot="rebuild" t-att-data-runbot-build="bu['id']">Force Build <i class="fa fa-level-up"></i></a>
                     </li>
-                    <t t-if="bu.real_build.local_state=='running'">
-                        <li><a t-attf-href="http://{{bu['domain']}}/?db={{bu['real_build'].dest}}-all">Connect all <i class="fa fa-sign-in"></i></a></li>
-                        <li><a t-attf-href="http://{{bu['domain']}}/?db={{bu['real_build'].dest}}-base">Connect base <i class="fa fa-sign-in"></i></a></li>
+                    <t t-if="bu.local_state=='running'">
+                        <li><a t-attf-href="http://{{bu['domain']}}/?db={{bu.dest}}-all">Connect all <i class="fa fa-sign-in"></i></a></li>
+                        <li><a t-attf-href="http://{{bu['domain']}}/?db={{bu.dest}}-base">Connect base <i class="fa fa-sign-in"></i></a></li>
                         <li><a t-attf-href="http://{{bu['domain']}}/">Connect <i class="fa fa-sign-in"></i></a></li>
                     </t>
                     <li t-if="bu.global_state in ['done','running'] or requested_action == 'deathrow'" groups="base.group_user">
@@ -55,21 +55,21 @@
                         </a>
                     </li>
                     <li t-if="bu.global_state != 'done'" groups="base.group_user">
-                        <a t-if="bu.real_build.requested_action != 'deathrow'" href="#" data-runbot="kill" t-att-data-runbot-build="bu['id']">Kill <i class="fa fa-crosshairs"/></a>
+                        <a t-if="bu.requested_action != 'deathrow'" href="#" data-runbot="kill" t-att-data-runbot-build="bu['id']">Kill <i class="fa fa-crosshairs"/></a>
                         <span t-else="" data-runbot="kill" > Killing <i class="fa fa-spinner fa-spin"/> <i class="fa fa-crosshairs"/></span>
                     </li>
                     <li t-if="bu.global_state == 'done'" groups="base.group_user">
-                        <a t-if="bu.real_build.requested_action != 'wake_up'" href="#" data-runbot="wakeup" t-att-data-runbot-build="bu['id']">Wake up <i class="fa fa-coffee"/></a>
+                        <a t-if="bu.requested_action != 'wake_up'" href="#" data-runbot="wakeup" t-att-data-runbot-build="bu['id']">Wake up <i class="fa fa-coffee"/></a>
                         <span t-else="" data-runbot="wakeup" > Waking up <i class="fa fa-spinner fa-spin"/> <i class="fa fa-crosshairs"/></span>
                     </li>
 
                     <li t-if="bu.global_state not in ('testing', 'waiting', 'pending')" class="divider"></li>
                     <li><a t-attf-href="/runbot/build/{{bu['id']}}">Logs <i class="fa fa-file-text-o"/></a></li>
-                    <t t-set="log_url" t-value="'http://%s' % bu.real_build.host if bu.real_build.host != fqdn else ''"/>
-                    <t t-if="bu.real_build.host" t-foreach="(bu.log_list or '').split(',')" t-as="log_name" >
-                      <li><a t-attf-href="{{log_url}}/runbot/static/build/#{bu['real_build'].dest}/logs/#{log_name}.txt">Full <t t-esc="log_name"/> logs <i class="fa fa-file-text-o"/></a></li>
+                    <t t-set="log_url" t-value="'http://%s' % bu.host if bu.host != fqdn else ''"/>
+                    <t t-if="bu.host" t-foreach="(bu.log_list or '').split(',')" t-as="log_name" >
+                      <li><a t-attf-href="{{log_url}}/runbot/static/build/#{bu.dest}/logs/#{log_name}.txt">Full <t t-esc="log_name"/> logs <i class="fa fa-file-text-o"/></a></li>
                     </t>
-                    <li t-if="bu.coverage and bu.real_build.host"><a t-attf-href="http://{{bu.real_build.host}}/runbot/static/build/#{bu['real_build'].dest}/coverage/index.html">Coverage <i class="fa fa-file-text-o"/></a></li>
+                    <li t-if="bu.coverage and bu.host"><a t-attf-href="http://{{bu.host}}/runbot/static/build/#{bu.dest}/coverage/index.html">Coverage <i class="fa fa-file-text-o"/></a></li>
                     <li t-if="bu.global_state!='pending'" class="divider"></li>
                     <li><a t-attf-href="{{br['branch'].branch_url}}"><t t-esc="'Branch ' if not br['branch'].pull_head_name else 'Pull '"/><i class="fa fa-github"/></a></li>
                     <li><a t-attf-href="https://{{repo.base}}/commit/{{bu['name']}}">Commit <i class="fa fa-github"/></a></li>
@@ -131,29 +131,16 @@
                                 <b>Branch:</b>  <span id="branchclp"><a title="Go to branch build list" t-attf-href="/runbot/branch/{{build.branch_id.id}}" t-esc="build.branch_id.branch_name"/></span>
                                 <t t-if="build.branch_id.pull_head_name" t-esc="'(%s)' % build.branch_id.pull_branch_name"/>
                                 <!--<a href="#" class="clipbtn octicon octicon-clippy" data-clipboard-target="#branchclp" title="Copy branch name to clipboard"/>--><br/>
-                                <b>Host:</b>  <t t-esc="build.real_build.host"/><br/>
+                                <b>Host:</b>  <t t-esc="build.host"/><br/>
                                 <b>Dest:</b>  <t t-esc="build.dest"/><br/>
                                 <b>Total time:</b>  <t t-esc="build.get_formated_build_time()"/><br/>
 
                             <br/>
-                            <t t-set="branch_name_builds" t-value="build.branch_id._get_last_branch_name_builds()"/>
-                            <t t-if="branch_name_builds">
-                              <b>Latest branch builds:</b>
-                              <t t-foreach="branch_name_builds" t-as="cbu">
-                                <t t-set="klass">info</t>
-                          
-                                <t t-if="cbu.global_result == 'ko'"><t t-set="klass">danger</t></t>
-                                <t t-if="cbu.global_result == 'warn'"><t t-set="klass">warning</t></t>
-                                <t t-if="cbu.global_result in ('killed', 'manually_killed')"><t t-set="klass">killed</t></t>
-                                <t t-if="cbu.global_result == 'ok' and cbu.global_state in ('running','done')"><t t-set="klass">success</t></t>
-                                <a t-attf-href='/runbot/build/{{cbu.id}}'><span t-attf-class="label label-{{klass}}"><t t-esc="cbu.repo_id._get_repo_name_part()"/></span></a>
-                              </t><br/>
-                            </t>
                             </td>
-                            <td t-if="build.real_build.children_ids">
+                            <td t-if="build.children_ids">
                               Children:
                               <table class="table table-condensed">
-                                <t t-foreach="build.real_build.children_ids.sorted('id')" t-as="child">
+                                <t t-foreach="build.children_ids.sorted('id')" t-as="child">
                                   <t t-set="rowclass"><t t-call="runbot.build_class"><t t-set="build" t-value="child"/></t></t>
                                   <tr t-attf-class="bg-{{rowclass.strip()}}-light"><td>
                                     <a t-attf-href="/runbot/build/{{child.id}}" >Build <t t-esc="child.id"/></a>
@@ -187,7 +174,6 @@
                         </table>
                         <p t-if="build.parent_id">Child of <a t-attf-href="/runbot/build/#{build.parent_id.id}"><t t-esc="build.parent_id.dest"/></a>
                         <t t-if="build.orphan_result">&amp;nbsp;<i class="fa fa-chain-broken" title="Build result ignored for parent" />&amp;nbsp;Orphaned build, the result does not affect parent build result</t></p>
-                        <p t-if="build.duplicate_id">Duplicate of <a t-attf-href="/runbot/build/#{build.duplicate_id.id}"><t t-esc="build.duplicate_id.dest"/></a></p>
                         <table class="table table-condensed">
                         <tr>
                             <th>Date</th>
@@ -195,8 +181,8 @@
                             <th>Type</th>
                             <th>Message</th>
                         </tr>
-                        <t t-foreach="build.real_build.sudo().log_ids" t-as="l">
-                            <t t-set="subbuild" t-value="(([child for child in build.real_build.children_ids if child.id == int(l.path)] if l.type == 'subbuild' else False) or [build.browse()])[0]"/>
+                        <t t-foreach="build.sudo().log_ids" t-as="l">
+                            <t t-set="subbuild" t-value="(([child for child in build.children_ids if child.id == int(l.path)] if l.type == 'subbuild' else False) or [build.browse()])[0]"/>
                             <t t-set="logclass" t-value="dict(CRITICAL='danger', ERROR='danger', WARNING='warning', OK='success', SEPARATOR='separator').get(l.level)"/>
                             <tr t-attf-class="'bg-%s-light' % {{logclass}} if {{logclass}} != 'separator' else {{logclass}}">
                                 <td style="white-space: nowrap; width:1%;"><t t-esc="l.create_date.strftime('%Y-%m-%d %H:%M:%S')"/></td>

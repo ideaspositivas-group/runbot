@@ -19,8 +19,6 @@
               </div>
               <group>
                   <group>
-                    <field name="repo_short_name"/>
-                    <field name="branch_name"/>
                     <field name="log_type"/>
                   </group>
                   <group>
@@ -49,8 +47,6 @@
           <button name="action_goto_build" type="object" icon="fa-external-link "/>
           <field name="build_id"/>
           <field name="log_create_date"/>
-          <field name="repo_short_name"/>
-          <field name="branch_name"/>
           <field name="name"/>
           <field name="func"/>
           <field name="path"/>
@@ -68,13 +64,9 @@
           <field name="message"/>
           <field name="name" string="Module"/>
           <field name="func"/>
-          <field name="branch_name"/>
-          <field name="repo_name"/>
           <field name="build_id"/>
           <filter string="Failed builds" name="failed_builds" domain="[('global_state', '=', 'done'), ('global_result', '=', 'ko')]"/>
           <separator/>
-          <filter string="Master branches" name="master_branches" domain="[('branch_name', '=', 'master')]"/>
-          <filter string="Sticky branches" name="sticky_branches" domain="[('branch_sticky', '=', True)]"/>
         </search>
       </field>
     </record>

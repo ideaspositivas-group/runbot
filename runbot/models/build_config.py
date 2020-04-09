@@ -32,6 +32,16 @@ class Config(models.Model):
     group = fields.Many2one('runbot.build.config', 'Configuration group', help="Group of config's and config steps")
     group_name = fields.Char('Group name', related='group.name')
     monitoring_view_id = fields.Many2one('ir.ui.view', 'Monitoring view')
+    build_refs_descriptors_ids = fields.One2many('runbot.build.ref.descriptor', compute='_compute_build_refs_descriptors_ids')
+    # todo compute step_ids ?
+
+    def _compute_build_refs_descriptors_ids(self):
+        for config in self:
+            build_refs_descriptors_ids = self.env['runbot.build.ref.descriptor']
+            for step in config.step_ids():
+                build_refs_descriptors_ids |= step.build_refs_descriptors_ids
+                for sub_config in step.create_config_ids:
+                    build_refs_descriptors_ids |= sub_config.build_refs_descriptors_ids
 
     @api.model_create_single
     def create(self, values):
@@ -140,6 +150,8 @@ class ConfigStep(models.Model):
     force_build = fields.Boolean("As a forced rebuild, don't use duplicate detection", default=False, track_visibility='onchange')
     force_host = fields.Boolean('Use same host as parent for children', default=False, track_visibility='onchange')  # future
     make_orphan = fields.Boolean('No effect on the parent result', help='Created build result will not affect parent build result', default=False, track_visibility='onchange')
+
+    build_refs_descriptors_ids = fields.One2many('runbot.build.ref.descriptor', 'config_step_id')
 
     @api.constrains('python_code')
     def _check_python_code(self):
@@ -321,11 +333,13 @@ class ConfigStep(models.Model):
         # we need to have at least one job of type install_odoo to run odoo, take the last one for db_name.
         cmd += ['-d', '%s-%s' % (build.dest, db_name)]
 
-        if grep(build._server("tools/config.py"), "proxy-mode") and build.repo_id.nginx:
+        icp = self.env['ir.config_parameter'].sudo()
+        nginx = icp.get_param('runbot.runbot_nginx', True)
+        if grep(build._server("tools/config.py"), "proxy-mode") and nginx:
             cmd += ["--proxy-mode"]
 
         if grep(build._server("tools/config.py"), "db-filter"):
-            if build.repo_id.nginx:
+            if nginx:
                 cmd += ['--db-filter', '%d.*$']
             else:
                 cmd += ['--db-filter', '%s.*$' % build.dest]
@@ -339,7 +353,7 @@ class ConfigStep(models.Model):
         self.env.cr.commit()  # commit before docker run to be 100% sure that db state is consistent with dockers
         self.invalidate_cache()
         res = docker_run(cmd, log_path, build_path, docker_name, exposed_ports=[build_port, build_port + 1], ro_volumes=exports)
-        build.repo_id._reload_nginx()
+        self.env['runbot.repo']._reload_nginx()
         return res
 
     def _run_odoo_install(self, build, log_path):
