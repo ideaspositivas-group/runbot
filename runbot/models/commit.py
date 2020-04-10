@@ -4,7 +4,7 @@ class Commit(models.Model):
     _name = "runbot.commit"
     _description = "Commit"
 
-    sha = fields.Char()
+    name = fields.Char('SHA')
     repo_id = fields.Many2one('runbot.repo', string='Repo') # discovered in repo
     date = fields.Datetime('Commit date')
     author = fields.Char('Author')
@@ -14,10 +14,10 @@ class Commit(models.Model):
     subject = fields.Text('Subject')
 
     def _source_path(self, *path):
-        return self.repo._source_path(self.sha, *path)
+        return self.repo._source_path(self.name, *path)
 
     def export(self):
-        return self.repo._git_export(self.sha)
+        return self.repo._git_export(self.name)
 
     def read_source(self, file, mode='r'):
         file_path = self._source_path(file)
@@ -28,4 +28,17 @@ class Commit(models.Model):
             return False
 
     def __str__(self):
-        return '%s:%s' % (self.repo.short_name, self.sha)
+        return '%s:%s' % (self.repo.short_name, self.name)
+
+class RunbotBuildCommit(models.Model):
+    _name = "runbot.build.commit"
+    _description = "Build commit"
+
+    params_id = fields.Many2one('runbot.build.params', 'Build', required=True, ondelete='cascade', index=True)
+    commit_id = fields.Many2one('runbot.commit', 'Dependency commit', required=True)
+    closest_branch_id = fields.Many2one('runbot.branch', 'Branch', ondelete='cascade')
+    match_type = fields.Char('Match Type')
+
+    def _get_repo(self):
+        return self.closest_branch_id.repo_id or self.dependecy_repo_id
+

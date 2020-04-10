@@ -6,7 +6,6 @@ from . import branch
 from . import build
 from . import project
 from . import event
-from . import build_dependency
 from . import build_config
 from . import ir_cron
 from . import host

@@ -74,7 +74,7 @@ class RunbotBuildStatSql(models.Model):
                 step.id AS config_step_id,
                 step.name AS config_step_name,
                 bu.id AS build_id,
-                bp.config_id AS build_config_id,
+                bu.config_id AS build_config_id,
                 bu.parent_path AS build_parent_path,
                 bu.host AS build_host
             FROM

@@ -14,7 +14,7 @@
                 <field name="name"/>
                 <field name="category_id"/>
                 <field name="repos_group_ids"/>
-                <field name="dependency_repo_ids"/>
+                <field name="dependency_ids"/>
                 <field name="config_id"/>
               </group>
             </sheet>
@@ -32,14 +32,14 @@
             <sheet>
               <group name="repo_group">
                 <field name="name"/>
-                <field name="default_project_category_id"/>
+                <field name="default_category_id"/>
                 <field name="modules"/>
                 <field name="modules_auto"/>
                 <field name="group_ids"  widget="many2many_tags"/>
                 <field name="server_files"/>
                 <field name="manifest_files"/>
                 <field name="addons_paths"/>
-                <field name="repos"/>
+                <field name="repo_ids"/>
               </group>
             </sheet>
           </form>

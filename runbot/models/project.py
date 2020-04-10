@@ -25,14 +25,14 @@ class ProjectCategory(models.Model):
     _description = 'Category'
 
     name = fields.Char('Category name', required=True, unique=True, help="Name of the base branch")
-    trigger_ids = fields.One2many('runbot.trigger', 'category_id', 'Triggers', required=True, unique=True, help="Name of the base branch")
+    trigger_ids = fields.One2many('runbot.trigger', 'category_id', string='Triggers', required=True, unique=True, help="Name of the base branch")
 
 class Project(models.Model):
     _name = "runbot.project"
     _description = "Project"
 
     name = fields.Char('Project name', required=True, unique=True, help="Name of the base branch")
-    project_category_id = fields.Many2one('runbot.project.category')
+    category_id = fields.Many2one('runbot.project.category')
     sticky = fields.Boolean(stored=True)
     is_base = fields.Boolean(compute='compute_is_base', stored=True)
     version_id = fields.Many2one('runbot.version', 'Version')
@@ -48,33 +48,40 @@ class Project(models.Model):
     def create(self, values):
         ...
 
-    def _from_branch(self, branch):
-        name = branch.reference_name
-        project_category_id = branch.repo_id.repo_group_id.default_project_category_id
-        project = self.search([('name', '=', name), ('project_category_id', '=', project_category_id)])
+    def write(self, values):
+        super().write(values)
+        if 'is_base' in values:
+            for project in self:
+                self.env['runbot.project'].search([('name', '=like', '%s%%' % project.name)])._compute_closest_base()
+
+    def _get(self, name, category_id):
+        project = self.search([('name', '=', name), ('category_id', '=', category_id)])
         if not project:
             self.create({
                 'name': name,
-                'project_category': project_category_id,
-                'sticky': branch.sticky, # NOT A GOOD IDEA, TODO REMOVE STICKY ON BRANCH, False by default
-                'base_id': self._get_closest_base(name)
+                'category_id': category_id,
             })
         return project
 
-    #@api.depends('is_base', 'forced_base')
-    #def _compute_closest_base(self, branch):
-    #    if self.is_base:
-    #        return self
-    #    name = branch.reference_name
-    #    project_category_id = branch.repo_id.repo_group_id.default_project_category_id
-    #    base_projects = self.search([('is_base', '=', True), ('project_category_id', '=', project_category_id)])
-    #    master_project = self.browse()
-    #    for project in base_projects:
-    #        if name.startswith(project.name):
-    #            return project
-    #        elif project.name == 'master':  # maybe make an orm cached get master project
-    #            master_project = project
-    #    return master_project
+    @api.depends('is_base', 'forced_base', 'base_id.is_base')
+    def _compute_closest_base(self):
+        bases_by_category = {}
+        for project in self:
+            if self.is_base:
+                return self
+            category_id = project.category_id
+            if category_id in bases_by_category:  # small perf imp for udge bartched
+                base_projects = bases_by_category[category_id]
+            else:
+                base_projects = self.search([('is_base', '=', True), ('category_id', '=', category_id)])
+                bases_by_category[category_id] = base_projects
+            for candidate in base_projects:
+                if project.name.startswith(candidate.name):
+                    project.base_id = candidate
+                    break
+                elif project.name == 'master':
+                    project.base_id = candidate
+
 
     def _get_preparing_instance(self):
         # find last project instance or create one
@@ -114,7 +121,7 @@ class ProjectInstance(models.Model):
         # For all commit on real branches:
         for project_commit in self.project_commit_ids:
             triggers = self.env['runbot.trigger'].search([
-                ('project_category_id', '=', self.project_category_id),
+                ('category_id', '=', self.project_id.category_id),
                 ('repos_group_ids', 'in', project_commit.repo_group_id.id)])
             print('trigger', triggers)
             # todo execute triggers

@@ -41,7 +41,7 @@ COPY_WHITELIST = [
     "build_type",
     "parent_id",
     "hidden",
-    "dependency_ids",
+    "commit_ids",
     "config_id",
     "orphan_result",
     "commit_path_mode",
@@ -61,21 +61,24 @@ class BuildParameters(models.Model):
     project_id = fields.Many2one('runbot.project', required=True) # mostly needed to define a dest
     # on param or on build?
     # execution parametter
-    dependency_ids = fields.One2many('runbot.build.dependency', 'build_id', copy=True)
+    commit_ids = fields.One2many('runbot.build.commit', 'params_id', copy=True)
     version_id = fields.Many2one('runbot.version', related='project_id.version_id')
-    config_data = JsonDictField('Config Data')
 
     # other informations
     extra_params = fields.Char('Extra cmd args')
-    config_id = fields.Many2one(
-        'runbot.build.config', 'Run Config', required=True,
+    root_config_id = fields.Many2one('runbot.build.config', 'Run Config', required=True,
         default=lambda self: self.env.ref('runbot.runbot_build_config_default', raise_if_not_found=False))
+    root_config_data = JsonDictField('Config Data')
     commit_path_mode = fields.Selection([('rep_sha', 'repo name + sha'),
                                     ('soft', 'repo name only'),
                                     ],
                                 default='soft',
                                 string='Source export path mode')
-    builds_refs = fields.One2many('runbot.build.ref', 'build_params_id')
+
+    builds_ids = fields.One2many('runbot.build', 'params_id')
+
+    builds_reference_ids = fields.One2many('runbot.build.reference', 'build_id')
+
     # problem for dependencies and path_mode.
     # they are change for upgrade, need commit in another version.
     # a new BuildParameters will be created in a subbuild: not cool
@@ -87,14 +90,6 @@ class BuildParameters(models.Model):
     # trigger could define domains to find builds
     # build_params could use those domains
     # other solution: ignore this, will be time setted, subbuild will create new params
-
-class BuildRef(models.Model):
-    _name = 'runbot.build.ref'
-    _description = 'build result used for dump or dependencies as reference for another build'
-
-    build_params_id = fields.Many2one('runbot.build.params')
-    ref_config_descriptor = fields.Many2one('runbot.build.ref.descriptor')
-    key = fields.Char('key')
 
 class BuildResults(models.Model):
     # remove duplicate management
@@ -118,9 +113,13 @@ class BuildResults(models.Model):
     # -> display all?
 
     params_id = fields.Many2one('runbot.build.params')
-    config_id = fields.Many2one('runbot.build.config', related="params_id.config_id")
+    config_id = fields.Many2one('runbot.build.config', default=lambda self: self.build_id.root_config_id)
+    config_data = JsonDictField('Config Data', default=lambda self: self.build_id.root_config_data)
     trigger_id = fields.Many2one('runbot.build.config', related="params_id.trigger_id")
     project_id = fields.Many2one('runbot.project', related='params_id.project_id', stored=True)  # mostly needed to define a dest
+    # could be a default value, but possible to change it to allow duplicate accros branches
+
+
     description = fields.Char('Description', help='Informative description')
     md_description = fields.Char(compute='_compute_md_description', String='MD Parsed Description', help='Informative description markdown parsed')
 
@@ -299,7 +298,7 @@ class BuildResults(models.Model):
         repo = build_id.repo_id
         dep_create_vals = []
         build_id._log('create', 'Build created') # mainly usefull to log creation time
-        if not vals.get('dependency_ids'):
+        if not vals.get('commit_ids'):
             params = build_id._get_params() # calling git show, dont call that if not usefull.
             for extra_repo in repo.dependency_ids:
                 repo_name = extra_repo.short_name
@@ -330,7 +329,7 @@ class BuildResults(models.Model):
                     'match_type': match_type,
                 })
             for dep_vals in dep_create_vals:
-                self.env['runbot.build.dependency'].sudo().create(dep_vals)
+                self.env['runbot.build.commit'].sudo().create(dep_vals)
 
         #if not self.env.context.get('force_rebuild') and not vals.get('build_type') == 'rebuild':
         #    # detect duplicate
@@ -381,7 +380,7 @@ class BuildResults(models.Model):
         #        # maybe update duplicate priority if needed
 
         docker_source_folders = set()
-        for commit in build_id._get_all_commit():
+        for commit in build_id.commit_ids:
             docker_source_folder = build_id._docker_source_folder(commit)
             if docker_source_folder in docker_source_folders:
                 extra_info['commit_path_mode'] = 'rep_sha'
@@ -838,7 +837,7 @@ class BuildResults(models.Model):
         # in case some build have commits with the same repo name (ex: foo/bar, foo-ent/bar)
         # it can be usefull to uniquify commit export path using hash
         if self.commit_path_mode == 'rep_sha':
-            return '%s-%s' % (commit.repo._get_repo_name_part(), commit.sha[:8])
+            return '%s-%s' % (commit.repo._get_repo_name_part(), commit.name[:8])
         else:
             return commit.repo._get_repo_name_part()
 
@@ -846,7 +845,7 @@ class BuildResults(models.Model):
         self.ensure_one()  # will raise exception if hash not found, we don't want to fail for all build.
         # checkout branch
         exports = {}
-        for commit in commits or self._get_all_commit():
+        for commit in commits or self.commit_ids:
             build_export_path = self._docker_source_folder(commit)
             if build_export_path in exports:
                 self._log('_checkout', 'Multiple repo have same export path in build, some source may be missing for %s' % build_export_path, level='ERROR')
@@ -857,7 +856,7 @@ class BuildResults(models.Model):
     def _get_repo_available_modules(self, commits=None):
         available_modules = []
         repo_modules = []
-        for commit in commits or self._get_all_commit():
+        for commit in commits or self.commit_ids:
             for (addons_path, module, manifest_file_name) in self._get_available_modules(commit):
                 if commit.repo == self.repo_id:
                     repo_modules.append(module)
@@ -976,20 +975,20 @@ class BuildResults(models.Model):
 
     def _get_all_commit(self):
         # TODO replace by runbot.commit
-        return [OldComit(self.repo_id, self.name)] + [OldComit(dep._get_repo(), dep.dependency_hash) for dep in self.dependency_ids]
+        return [OldComit(self.repo_id, self.name)] + [OldComit(dep._get_repo(), dep.dependency_hash) for dep in self.commit_ids]
 
     def _get_server_commit(self, commits=None):
         """
         returns a Commit() of the first repo containing server files found in commits or in build commits
         the commits param is not used in code base but could be usefull for jobs and crons
         """
-        for commit in (commits or self._get_all_commit()):
+        for commit in (commits or self.commit_ids):
             if commit.repo.server_files:
                 return commit
         raise ValidationError('No repo found with defined server_files')
 
     def _get_addons_path(self, commits=None):
-        for commit in (commits or self._get_all_commit()):
+        for commit in (commits or self.commit_ids):
             source_path = self._docker_source_folder(commit)
             for addons_path in (commit.repo.addons_paths or '').split(','):
                 if os.path.isdir(commit._source_path(addons_path)):
@@ -1013,7 +1012,7 @@ class BuildResults(models.Model):
         python_params = python_params or []
         py_version = py_version if py_version is not None else build._get_py_version()
         pres = []
-        for commit in self._get_all_commit():
+        for commit in self.commit_ids:
             if os.path.isfile(commit._source_path('requirements.txt')):
                 repo_dir = self._docker_source_folder(commit)
                 requirement_path = os.path.join(repo_dir, 'requirements.txt')
@@ -1180,3 +1179,12 @@ class BuildResults(models.Model):
 
     def get_formated_build_age(self):
         return s2human(self.build_age)
+
+
+class BuildReference(models.Model):
+    _name = 'runbot.build.reference'
+    _description = 'build result used for dump or dependencies as reference for another build'
+
+    build_id = fields.Many2one('runbot.build')
+    ref_config_descriptor = fields.Many2one('runbot.build.reference.descriptor')
+    key = fields.Char('key')

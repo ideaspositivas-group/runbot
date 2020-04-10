@@ -32,12 +32,12 @@ class Config(models.Model):
     group = fields.Many2one('runbot.build.config', 'Configuration group', help="Group of config's and config steps")
     group_name = fields.Char('Group name', related='group.name')
     monitoring_view_id = fields.Many2one('ir.ui.view', 'Monitoring view')
-    build_refs_descriptors_ids = fields.One2many('runbot.build.ref.descriptor', compute='_compute_build_refs_descriptors_ids')
+    build_refs_descriptors_ids = fields.One2many('runbot.build.reference.descriptor', compute='_compute_build_refs_descriptors_ids')
     # todo compute step_ids ?
 
     def _compute_build_refs_descriptors_ids(self):
         for config in self:
-            build_refs_descriptors_ids = self.env['runbot.build.ref.descriptor']
+            build_refs_descriptors_ids = self.env['runbot.build.reference.descriptor']
             for step in config.step_ids():
                 build_refs_descriptors_ids |= step.build_refs_descriptors_ids
                 for sub_config in step.create_config_ids:
@@ -94,7 +94,7 @@ class Config(models.Model):
                     create_config._check_recustion(visited[:])
 
 class ConfigStepBuildRef(models.Model):
-    _name = 'runbot.build.ref.descriptor'
+    _name = 'runbot.build.reference.descriptor'
     _description = 'Extra dependency build that will be used by step'
 
     config_step_id = fields.Many2one('runbot.build.config.step')
@@ -151,7 +151,7 @@ class ConfigStep(models.Model):
     force_host = fields.Boolean('Use same host as parent for children', default=False, track_visibility='onchange')  # future
     make_orphan = fields.Boolean('No effect on the parent result', help='Created build result will not affect parent build result', default=False, track_visibility='onchange')
 
-    build_refs_descriptors_ids = fields.One2many('runbot.build.ref.descriptor', 'config_step_id')
+    build_refs_descriptors_ids = fields.One2many('runbot.build.reference.descriptor', 'config_step_id')
 
     @api.constrains('python_code')
     def _check_python_code(self):
@@ -255,8 +255,8 @@ class ConfigStep(models.Model):
                 if count > 200:
                     build._logger('Too much build created')
                     break
-                children = Build.create({
-                    'dependency_ids': build._copy_dependency_ids(),
+                children = Build.create({ # TODO create build_result instead using same build params? or
+                    'commit_ids_ids': build._copy_commit_ids(),
                     'config_id': create_config.id,
                     'parent_id': build.id,
                     'branch_id': build.branch_id.id,
@@ -426,7 +426,7 @@ class ConfigStep(models.Model):
         cmd.finals.append(['pg_dump', db_name, '>', sql_dest])
         cmd.finals.append(['cp', '-r', filestore_path, filestore_dest])
         cmd.finals.append(['cd', dump_dir, '&&', 'zip', '-rmq9', zip_path, '*'])
-        infos = '{\n    "db_name": "%s",\n    "build_id": %s,\n    "shas": [%s]\n}' % (db_name, build.id, ', '.join(['"%s"' % commit for commit in build._get_all_commit()]))
+        infos = '{\n    "db_name": "%s",\n    "build_id": %s,\n    "shas": [%s]\n}' % (db_name, build.id, ', '.join(['"%s"' % commit for commit in build.commit_ids]))
         build.write_file('logs/%s/info.json' % db_name, infos)
 
         if self.flamegraph:
@@ -485,7 +485,7 @@ class ConfigStep(models.Model):
 
     def _coverage_params(self, build, modules_to_install):
         pattern_to_omit = set()
-        for commit in build._get_all_commit():
+        for commit in build.commit_ids:
             docker_source_folder = build._docker_source_folder(commit)
             for manifest_file in commit.repo.manifest_files.split(','):
                 pattern_to_omit.add('*%s' % manifest_file)

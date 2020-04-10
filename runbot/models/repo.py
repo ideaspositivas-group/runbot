@@ -42,8 +42,8 @@ class RepoTrigger(models.Model):
 
     name = fields.Char("Repo trigger descriptions")
     category_id = fields.Many2one('runbot.project.category')  # main/security/runbot
-    repos_group_ids = fields.Many2many('runbot.repo.group', "Triggers")
-    dependency_repo_ids = fields.Many2many('runbot.repo.group', "Dependencies")
+    repos_group_ids = fields.Many2many('runbot.repo.group', relation='runbot_trigger_triggers', string="Triggers")
+    dependency_ids = fields.Many2many('runbot.repo.group', relation='runbot_trigger_dependencies', string="Dependencies")
     config_id = fields.Many2one('runbot.build.config', 'Config')
     # maybe add many2many instead with type on config? maybe latter
     #multiple trigger vs multiple config on trigger
@@ -84,11 +84,13 @@ class RepoGroup(models.Model):
     _description = 'Main repository and forks'
 
     name = fields.Char("Repo forks descriptions")  # odoo/enterprise/upgrade/security/runbot/design_theme
-    main = fields.Many2one('runbot.repo', "Main repo")
-    main_regex = fields.Char('regex to define if a branch is a version or not')
-    repos = fields.Many2one('runbot.repo', "Main repo and its forks")
-    default_project_category_id = fields.Many2one('runbot.project.category',
+    #main = fields.Many2one('runbot.repo', "Main repo")
+    #main_regex = fields.Char('regex to define if a branch is a version or not')
+    repo_ids = fields.One2many('runbot.repo', 'repo_group_id', "Repo and forks")
+    default_category_id = fields.Many2one('runbot.project.category',
         help="Default project category to use when pushing on this repos")
+    # -> not verry usefull, remove it? (iterate on categories or contraints triggers:
+    # all trigger where a repo is used must be in the same category.
     modules = fields.Char("Modules to install", help="Comma-separated list of modules to install and test.")
     modules_auto = fields.Selection([('none', 'None (only explicit modules list)'),
                                      ('repo', 'Repository modules (excluding dependencies)'),
@@ -142,22 +144,11 @@ class RunbotRepo(models.Model):
     hook_time = fields.Float('Last hook time', compute='_compute_hook_time')
     get_ref_time = fields.Float('Last refs db update', compute='_compute_get_ref_time')
     token = fields.Char("Github token", groups="runbot.group_runbot_admin")
-    is_main = fields.Boolean('Is main', compute='_compute_is_main')
+    #is_main = fields.Boolean('Is main', compute='_compute_is_main')
 
-    def _compute_is_mail(self):
-        for repo in self:
-            repo.is_main = repo.repo_group.main == repo
-
-    def _compute_config_id(self):
-        for repo in self:
-            if repo.repo_config_id:
-                repo.config_id = repo.repo_config_id
-            else:
-                repo.config_id = self.env.ref('runbot.runbot_build_config_default')
-
-    def _inverse_config_id(self):
-        for repo in self:
-            repo.repo_config_id = repo.config_id
+    #def _compute_is_main(self):
+    #    for repo in self:
+    #        repo.is_main = repo.repo_group.main == repo
 
     def _compute_get_ref_time(self):
         self.env.cr.execute("""
@@ -388,6 +379,7 @@ class RunbotRepo(models.Model):
             if not ref_branches.get(name):
                 _logger.debug('repo %s found new branch %s', self.name, name)
                 new_branch = self.env['runbot.branch'].create({'repo_id': self.id, 'name': name})
+
                 ref_branches[name] = new_branch.id
 
         branches = self.env['runbot.branch'].browse(ref_branches.values())
@@ -409,12 +401,12 @@ class RunbotRepo(models.Model):
             # if dateutil.parser.parse(date[:19]) + datetime.timedelta(days=max_age) < datetime.datetime.now():
             #     continue
             # create build (and mark previous builds as skipped) if not found
-            if branch.head_sha != sha: # new push on branch
+            if branch.head_name != sha: # new push on branch
                 _logger.debug('repo %s branch %s new commit found: %s', self.name, branch.name, sha)
-                commit = self.env['runbot.commit'].search([('sha', '=', sha), ('repo_id', '=', self.id)])
+                commit = self.env['runbot.commit'].search([('name', '=', sha), ('repo_id', '=', self.id)])
                 if not commit:
                     commit = self.env['runbot.commit'].create({
-                        'sha': sha,
+                        'name': sha,
                         'repo_id': self.id,
                         'author': author,
                         'author_email': author_email,
@@ -429,7 +421,7 @@ class RunbotRepo(models.Model):
                     continue
 
                 # todo move following logic to project ? project._notify_new_commit()
-                project_instance = project._get_preparing_instance() 
+                project_instance = project._get_preparing_instance()
                 project_instance._add_commit(commit)
 
                 if not project.sticky: # todo move this logic to project?
@@ -803,7 +795,7 @@ class RunbotRepo(models.Model):
             cannot_be_deleted_builds = self.env['runbot.build'].search([('host', '=', fqdn()), ('local_state', 'not in', ('done', 'duplicate'))])
             cannot_be_deleted_path = set()
             for build in cannot_be_deleted_builds:
-                for commit in build._get_all_commit():
+                for commit in build.commit_ids:
                     cannot_be_deleted_path.add(commit._source_path())
 
             to_delete = set()

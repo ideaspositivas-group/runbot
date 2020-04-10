@@ -1,8 +1,5 @@
 <odoo>
   <data>
-    
-
-
     <record id="build_form_params" model="ir.ui.view">
         <field name="model">runbot.build.params</field>
         <field name="arch" type="xml">
@@ -11,15 +8,14 @@
                     <group>
                         <field name="trigger_id"/>
                         <field name="project_id"/>
-                        <field name="config_id"/>
+                        <field name="root_config_id"/>
                         <field name="version_id"/>
-                        <field name="config_data"/>
+                        <field name="root_config_data"/>
                         <field name="extra_params"/>
 
-                        <field name="dependency_ids">
+                        <field name="commit_ids">
                             <tree>
-                                <field name="dependecy_repo_id"/>
-                                <field name="dependency_hash"/>
+                                <field name="commit_id"/>
                                 <field name="closest_branch_id"/>
                                 <field name="match_type"/>
                             </tree>
@@ -29,8 +25,6 @@
             </form>
         </field>
     </record>
-
-
 
     <record id="build_form" model="ir.ui.view">
         <field name="model">runbot.build</field>
