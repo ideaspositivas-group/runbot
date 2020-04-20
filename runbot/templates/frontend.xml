@@ -110,7 +110,7 @@
                               <td style="width:12%">
                                   <small class="branch_time" ><t t-esc="br['builds'] and br['builds'][0].get_formated_build_time()"/></small>
                                   <div class="branch_name"><i t-if="br['branch'].sticky" class="fa fa-star" style="color: #f0ad4e" /><a t-attf-href="/runbot/branch/#{br['branch'].id}"><b t-esc="br['branch'].branch_name"/></a></div>
-                                         <div class="btn-group btn-group-xs">
+                                      <div class="btn-group btn-group-xs">
                                       <a t-attf-href="{{br['branch'].branch_url}}" class="btn btn-default btn-xs"><t t-esc="'Branch ' if not br['branch'].pull_head_name else 'Pull '"/><i class="fa fa-github"/></a>
                                       <a t-attf-href="/runbot/quick_connect/#{br['branch'].id}" class="btn btn-default btn-xs" aria-label="Quick Connect"><i class="fa fa-fast-forward" title="Quick Connect"/></a>
                                   </div>
@@ -132,16 +132,7 @@
                                   </t>
                               </td>
                               <t t-foreach="br['builds']" t-as="bu">
-                                  <t t-if="bu.global_state=='pending'"><t t-set="klass">default</t></t>
-                                  <t t-if="bu.global_state in ('testing', 'waiting')"><t t-set="klass">info</t></t>
-                                  <t t-if="bu.global_state in ['running','done']">
-                                    <t t-if="bu.global_result == 'ko'"><t t-set="klass">danger</t></t>
-                                    <t t-if="bu.global_result == 'warn'"><t t-set="klass">warning</t></t>
-                                    <t t-if="bu.global_result == 'ok'"><t t-set="klass">success</t></t>
-                                    <t t-if="bu.global_result == 'skipped'"><t t-set="klass">default</t></t>
-                                    <t t-if="bu.global_result in ['killed', 'manually_killed']"><t t-set="klass">killed</t></t>
-                                  </t>
-                                  <td t-attf-class="bg-{{klass}}-light" style="width:22%">
+                                  <td t-attf-class="bg-{{bu.get_color_class()}}-light" style="width:22%">
                                      <t t-call="runbot.build_button">
                                       <t t-set="klass">btn-group-sm</t>
                                       <t t-set="show_rebuild_button" t-value="bu==br['builds'][0]"></t>
@@ -175,5 +166,72 @@
               </div>
           </t>
       </template>
+
+
+
+       <template id="runbot.projects">
+          <t t-call='website.layout'>
+              <t t-set="head">
+                  <t t-if="refresh">
+                      <meta http-equiv="refresh" t-att-content="refresh"/>
+                  </t>
+              </t>
+              <t t-set="nav_form">
+                <form class="form-inline my-2 my-lg-0" role="search" t-att-action="qu(search='')" method="get">
+                  <div class="input-group md-form form-sm form-2 pl-0">
+                    <input class="form-control my-0 py-1 red-border" type="text" placeholder="Search" aria-label="Search" name="search" t-att-value="search"/>
+                    <div class="input-group-append">
+                      <button type='submit' class="input-group-text red lighten-3" id="basic-text1"><i class="fa fa-search text-grey"></i></button>
+                    </div>
+                  </div>
+                </form>
+              </t>
+              <div class="container-fluid">
+                  <div class="row">
+                      <div class='col-md-12'>
+                          <div t-if="message" class="alert alert-warning" role="alert">
+                            <t t-esc="message" />
+                          </div>
+                          <div t-if="not category" class="mb32">
+                              <h1>No category</h1>
+                          </div>
+                          <table t-else="" class="table table-condensed table-bordered" style="table-layout: initial;">
+                            <tr>
+                                <th>Projects</th>
+                                <td colspan="4">
+                                  <span class="pull-right" t-call="runbot.slots_infos"/>
+                                </td>
+                            </tr>
+                              <tr t-foreach="projects" t-as="project">
+                              <td style="width:12%">
+                                  <div class="project_name"><i t-if="project.sticky" class="fa fa-star" style="color: #f0ad4e" /><a t-attf-href="/runbot/project/#{project.id}"><b t-esc="project.name"/></a></div>
+                                        <div class="btn-group btn-group-xs">
+                                        <a t-attf-href="{{br['branch'].branch_url}}" class="btn btn-default btn-xs"><t t-esc="'Branch ' if not br['branch'].pull_head_name else 'Pull '"/><i class="fa fa-github"/></a>
+                                        <a t-attf-href="/runbot/quick_connect/#{br['branch'].id}" class="btn btn-default btn-xs" aria-label="Quick Connect"><i class="fa fa-fast-forward" title="Quick Connect"/></a>
+                                    </div>
+                                </td>
+                                <t t-foreach="project.last_instances" t-as="instance">
+                                    <t t-if="instance.state=='preparing'"><t t-set="klass">default</t></t>
+                                    <t t-if="instance.state=='ready'"><t t-set="klass">success</t></t>
+                                    <td t-attf-class="bg-{{klass}}-light" style="width:22%">
+                                      <span
+                                        t-foreach="instance_slot_ids"
+                                        t-as="slot" 
+                                        t-attf-class="label label-{{slot.build_id.get_color_class()}}"
+                                        t-esc="slot.trigger_id.name"/>
+                                    </td>
+                                </t>
+                            </tr>
+                            </table>
+                      </div>
+                  </div>
+
+              </div>
+          </t>
+      </template>
+
+
+
+
     </data>
 </odoo>

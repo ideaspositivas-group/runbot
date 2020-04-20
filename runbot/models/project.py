@@ -1,5 +1,9 @@
 import glob
 import re
+import time
+
+from collections import defaultdict
+
 from odoo import models, fields, api
 
 #Todo test: create will invalid branch name, pull request
@@ -12,8 +16,8 @@ class Version(models.Model):
     name = fields.Char('Version name')
     number = fields.Char('Comparable version number', compute='_compute_version_number', stored=True)
 
-    @api.depends('version_name')
-    def compute_version_number(self):
+    @api.depends('name')
+    def _compute_version_number(self):
         if self.version_name == 'master':
             self.version_number = '~'
         else:
@@ -34,19 +38,61 @@ class Project(models.Model):
     name = fields.Char('Project name', required=True, unique=True, help="Name of the base branch")
     category_id = fields.Many2one('runbot.project.category')
     sticky = fields.Boolean(stored=True)
-    is_base = fields.Boolean(compute='compute_is_base', stored=True)
+    is_base = fields.Boolean('Is base')
     version_id = fields.Many2one('runbot.version', 'Version')
+    branch_ids = fields.One2many('runbot.branch', 'project_id')
+    instance_ids = fields.One2many('runbot.instance', 'project_id')
+
+    # custom behaviour
+    rebuild_requested = fields.Boolean("Request a rebuild", help="Rebuild the latest commit even when no_auto_build is set.", default=False)
     no_build = fields.Boolean('No build')
+    modules = fields.Char("Modules to install", help="Comma-separated list of modules to install and test.")
+
+    last_instances = fields.Many2many('runbot.instance', 'Last instances', compute='_compute_last_isnstances')
+
+
+    def _compute_last_instances(self):
+        if self:
+            instance_ids = defaultdict(list)
+            self.env.cr.execute("""
+                SELECT
+                    id
+                FROM (
+                    SELECT
+                        instance.id AS id,
+                        row_number() OVER (PARTITION BY instance.project_id order by instance.id desc) AS row
+                    FROM
+                        runbot_project project INNER JOIN runbot_project_instance instance ON project.id=instance.project_id
+                    WHERE
+                        project.id in %s
+                    ) AS project_instance
+                WHERE
+                    row <= 4
+                ORDER BY row, id desc
+                """, [tuple(self.ids)]
+            )
+            instances = self.env['runbot.instance'].browse([r[0] for r in self.env.cr.fetchall()])
+            for instance in instances:
+                instance_ids[instance.project_id.id].append(instance)
+
+            for project in self:
+                project.last_instances = [(6, 0, instance_ids[project.id])]
+
+
+    def toggle_request_project_rebuild(self):
+        for branch in self:
+            if not branch.rebuild_requested:
+                branch.rebuild_requested = True
+                branch.repo_id.sudo().set_hook_time(time.time())
+            else:
+                branch.rebuild_requested = False
+
     # version can change in case of retarget or manual operation from user
 
 
     #base_id = fields.Many2one('runbot.project', 'Base project', compute='_compute_closest_base' 
     #    help='A corresponding project that is a base, ususally a target, (master, or other version)')
     #forced_base_id = fields.Many2one('runbot.project', 'Forced base project')
-
-    @api.model_create_single
-    def create(self, values):
-        ...
 
     def write(self, values):
         super().write(values)
@@ -105,12 +151,11 @@ class Project(models.Model):
 class ProjectInstance(models.Model):
     _name = "runbot.instance"
     _description = "Project instance"
-    _inherit = "mail.thread"
 
     last_update = fields.Datetime('Last ref update')
     project_id = fields.Many2one('runbot.project', required=True)
     project_commit_ids = fields.One2many('runbot.instance.commit', 'project_instance_id')
-    builds = fields.Many2many('runbot.build')
+    instance_slot_ids = fields.One2many('runbot.instance.slot', 'project_instance_id')
     state = fields.Selection([('preparing', 'Preparing'), ('ready', 'Ready')])
 
     def _add_commit(self, commit):
@@ -132,21 +177,23 @@ class ProjectInstanceCommit(models.Model):
     _description = "Project instance commit"
 
     commit_id = fields.Many2one('runbot.commit')
+    # ??? base_commit_id = fields.Many2one('runbot.commit')
     project_instance_id = fields.Many2one('runbot.instance')
-    match_type = fields.Selection([('head', 'Head of branch'), ('default', 'Found on base branch')])  # HEAD, DEFAULT
-    has_main = fields.Boolean('Commit already exists in another base project')  # a ref is pushed on another branch, don't build?
+    match_type = fields.Selection([('new', 'New head of branch'), ('head', 'Head of branch'), ('default', 'Found on base branch')])  # HEAD, DEFAULT
 
 
-class ProjectInstanceBuild(models.Model):
-    _name = 'runbot.instance.build'
+class ProjectInstanceSlot(models.Model):
+    _name = 'runbot.instance.slot'
     _description = 'Link between a project instance and a build'
 
 
     project_instance_id = fields.Many2one('runbot.instance')
+    trigger_id = fields.Many2one('runbot.trigger')
     build_id = fields.Many2one('runbot.build')
-    link_type = fields.Selection([('created', 'Build created'),('matched', 'Existing build matched')]) # rebuild type? 
+    link_type = fields.Selection([('created', 'Build created'), ('matched', 'Existing build matched')]) # rebuild type?
     active = fields.Boolean('Attached')
+    result = fields.Selection("Result", related='build_id.global_result')
     # rebuild, what to do: since build ccan be in multiple instance:
     # - replace for all instance?
-    # - only available on instance and replace for instance only? 
+    # - only available on instance and replace for instance only?
     # - create a new project instance will new linked build?

@@ -45,35 +45,7 @@ class RepoTrigger(models.Model):
     repos_group_ids = fields.Many2many('runbot.repo.group', relation='runbot_trigger_triggers', string="Triggers")
     dependency_ids = fields.Many2many('runbot.repo.group', relation='runbot_trigger_dependencies', string="Dependencies")
     config_id = fields.Many2one('runbot.build.config', 'Config')
-    # maybe add many2many instead with type on config? maybe latter
-    #multiple trigger vs multiple config on trigger
 
-    #-odoo
-    #    -odoo                  (Split)
-
-    #-enterprise
-    #    -enterprise + odoo     (Split)
-
-    #-upgrade
-    #    upgrade                (Upgrade)
-
-    #-design-theme
-    #    design theme           (Design Theme)
-
-    #-runbot
-    #   runbot+odoo             (Runbot)
-
-    #-odoo-security
-    #   -odoo-security          (Split)
-
-    #-enterprise-security
-    #   -odoo-d + enterprise-s  (Split)
-
-    #-odoo+upgrade    (new concept), need both, or any?
-    #    odoo+upgrade           (Upgarde dev)
-
-    #-enterprise+upgrade    (new concept), need both, or any?
-    #    odoo+enterprise+upgrade(Upgarde dev)
 
 class RepoGroup(models.Model):
     """
@@ -419,6 +391,7 @@ class RunbotRepo(models.Model):
                 project = branch.project_id
                 if project.no_buld:
                     continue
+                # TODO check  if repo group of branch is a trigger
 
                 # todo move following logic to project ? project._notify_new_commit()
                 project_instance = project._get_preparing_instance()
@@ -589,7 +562,7 @@ class RunbotRepo(models.Model):
                 ORDER BY row, id desc
                 """, [tuple(sticky_branches_ids), host.name]
             )
-            cannot_be_killed_ids += self.env.cr.fetchall()
+            cannot_be_killed_ids += self.env.cr.fetchall() #looks wrong?
         cannot_be_killed_ids = cannot_be_killed_ids[:running_max]  # ensure that we don't try to keep more than we can handle
 
         build_ids = Build.search(domain_host + [('local_state', '=', 'running'), ('id', 'not in', cannot_be_killed_ids)], order='job_start desc').ids

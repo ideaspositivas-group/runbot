@@ -1,8 +1,6 @@
 <odoo>
   <data>
-    <menuitem name="Runbot" id="runbot_menu_root"/>
-  
-        <record id="repo_trigger_form" model="ir.ui.view">
+      <record id="repo_trigger_form" model="ir.ui.view">
         <field name="name">runbot.repo.trigger.form</field>
         <field name="model">runbot.trigger</field>
         <field name="arch" type="xml">
@@ -85,14 +83,38 @@
         <field name="res_model">runbot.repo</field>
         <field name="view_mode">tree,form</field>
     </record>
+
+    <record id="runbot_triggers" model="ir.actions.act_window">
+        <field name="name">Triggers</field>
+        <field name="res_model">runbot.trigger</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+    <record id="runbot_groups" model="ir.actions.act_window">
+        <field name="name">Groups</field>
+        <field name="res_model">runbot.repo.group</field>
+        <field name="view_mode">tree,form</field>
+    </record>
     
+    <menuitem name="Runbot" id="runbot_menu_root"/>
+    <menuitem id="runbot_menu_repos" name="Repos" parent="runbot_menu_root"/>
     <menuitem
-        name="Repositories" 
-        id="runbot_menu_repo_tree"
-        parent="runbot_menu_root"
+       id="runbot_menu_repo_tree"
+        parent="runbot_menu_repos"
         sequence="10"
         action="open_view_repo_tree"
         />
+      <menuitem
+        id="runbot_menu_group"
+        parent="runbot_menu_repos"
+        sequence="10"
+        action="runbot_groups"
+      />
+      <menuitem
+        id="runbot_menu_trigger"
+        parent="runbot_menu_repos"
+        sequence="10"
+        action="runbot_triggers"
+      />
     
   </data>
 </odoo>

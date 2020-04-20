@@ -35,8 +35,6 @@
                       <field name="create_date"/>
                       <field name="id"/>
                       <field name="host" groups="base.group_no_one"/>
-                      <field name="trigger_id"/>
-                      <field name="project_id"/>
                       <field name="dest"/>
                       <field name="build_url" widget="url" readonly="1" text="View build"/>
                     </tree>
@@ -48,8 +46,6 @@
                       <field name="create_date"/>
                       <field name="id"/>
                       <field name="host" groups="base.group_no_one"/>
-                      <field name="trigger_id"/>
-                      <field name="project_id"/>
                       <field name="dest"/>
                       <field name="build_url" widget="url" readonly="1" text="View build"/>
                     </tree>

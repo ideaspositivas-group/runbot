@@ -40,16 +40,12 @@ class runbot_branch(models.Model):
     #intermediate_stickies = fields.Many2many('runbot.branch', compute='_compute_intermediate_stickies', string='Intermediates stickies')
     coverage_result = fields.Float(compute='_compute_coverage_result', type='Float', string='Last coverage', store=False)  # non optimal search in loop, could we store this result ? or optimise
     state = fields.Char('Status')
-    modules = fields.Char("Modules to Install", help="Comma-separated list of modules to install and test.")
     priority = fields.Boolean('Build priority', default=False)
     no_auto_build = fields.Boolean("Don't automatically build commit on this branch", default=False)
-    rebuild_requested = fields.Boolean("Request a rebuild", help="Rebuild the latest commit even when no_auto_build is set.", default=False)
-
-    branch_config_id = fields.Many2one('runbot.build.config', 'Branch Config')
-    config_id = fields.Many2one('runbot.build.config', 'Run Config', compute='_compute_config_id', inverse='_inverse_config_id')
 
     make_stats = fields.Boolean('Extract stats from logs', compute='_compute_make_stats', store=True)
 
+    @api.depends('target_branch_name', 'pull_head_name', 'pull_head_repo_id')
     def _compute_reference_name(self):
         """
         a unique reference for a branch inside a project.
@@ -58,16 +54,11 @@ class runbot_branch(models.Model):
             - pull_head_name (organisation:branch_name) for external pr
         """
         for branch in self:
-            repo_id = branch.repo_id
             if branch.target_branch_name and branch.pull_head_name:  # odoo:master-remove-duplicate-idx, owner:xxx, 
                 _, name = branch.pull_head_name.split(':')  # TODO fix where pullheadname doesnt have : -> old branch, redo get_pull_info
-                repo_group_id = repo_id.repo_group_id
-                source_repo = branch.pull_head_repo_id
-                if source_repo:
+                if branch.pull_head_repo_id:
                     branch.reference_name = name
-                    assert source_repo in repo_group_id.repos  # should be in repo list
                 else:
-                    
                     branch.reference_name = branch.pull_head_name  # repo is not known, not in repo list must be an external pr, so use complete label
             else:
                 branch.reference_name = branch.branch_name
@@ -139,13 +130,6 @@ class runbot_branch(models.Model):
     #            branch.intermediate_stickies = [(6, 0, self.search(domain, order='id desc').ids)]
     #        else:
     #            branch.intermediate_stickies = [(6, 0, branch.closest_sticky.intermediate_stickies.ids)]
-
-    def _compute_config_id(self):
-        for branch in self:
-            if branch.branch_config_id:
-                branch.config_id = branch.branch_config_id
-            else:
-                branch.config_id = branch.repo_id.config_id
 
     def _inverse_config_id(self):
         for branch in self:
@@ -395,11 +379,3 @@ class runbot_branch(models.Model):
         Branch = self.env['runbot.branch']
         branch = Branch.create({'repo_id': repo_id, 'name': name})
         return branch
-
-    def toggle_request_branch_rebuild(self):
-        for branch in self:
-            if not branch.rebuild_requested:
-                branch.rebuild_requested = True
-                branch.repo_id.sudo().set_hook_time(time.time())
-            else:
-                branch.rebuild_requested = False

@@ -9,16 +9,6 @@
               <button name="recompute_infos" string="Recompute Infos" type="object" class="oe_highlight"/>
             </header>
             <sheet>
-              <div class="oe_button_box" name="button_box">
-                <button name="toggle_request_branch_rebuild" type="object" class="oe_stat_button" icon="fa-play">
-                  <field name="rebuild_requested" widget="boolean_button" options='{"terminology": {
-                      "string_true": "Rebuild Asked",
-                      "hover_true": "Cancel the branch rebuild",
-                      "string_false": "No Rebuild Asked",
-                      "hover_false": "Request a branch rebuild"
-                  }}'/>
-                </button>
-              </div>
               <group name="branch_group">
                 <field name="project_id"/>
                 <field name="repo_id"/>
@@ -30,8 +20,6 @@
                 <field name="sticky"/>
                 <field name="priority"/>
                 <field name="state"/>
-                <field name="modules"/>
-                <field name="config_id"/>
               </group>
             </sheet>
           </form>
@@ -48,7 +36,6 @@
                 <field name="name"/>
                 <field name="sticky"/>
                 <field name="priority"/>
-                <field name="config_id"/>
                 <field name="state"/>
             </tree>
         </field>

@@ -46,7 +46,7 @@ body, .table{
 
 .dropdown-toggle:after { content: none }
 
-.branch_name {
+.branch_name, .project_name {
     max-width: 250px;
     white-space: nowrap;
     overflow: hidden;

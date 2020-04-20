@@ -6,13 +6,10 @@
             <form string="Build Params">
                 <sheet>
                     <group>
-                        <field name="trigger_id"/>
-                        <field name="project_id"/>
-                        <field name="root_config_id"/>
+                        <field name="config_id"/>
+                        <field name="config_data"/>
                         <field name="version_id"/>
-                        <field name="root_config_data"/>
                         <field name="extra_params"/>
-
                         <field name="commit_ids">
                             <tree>
                                 <field name="commit_id"/>
@@ -25,7 +22,16 @@
             </form>
         </field>
     </record>
-
+    <record id="view_build_params_tree" model="ir.ui.view">
+        <field name="model">runbot.build.params</field>
+        <field name="arch" type="xml">
+            <tree string="Build params">
+                <field name="config_id"/>
+                <field name="version_id"/>
+                <field name="commit_ids"/>
+            </tree>
+        </field>
+    </record>
     <record id="build_form" model="ir.ui.view">
         <field name="model">runbot.build</field>
         <field name="arch" type="xml">
@@ -79,7 +85,6 @@
         <field name="model">runbot.build</field>
         <field name="arch" type="xml">
             <tree string="Builds">
-                <field name="project_id"/>
                 <field name="dest"/>
                 <field name="global_state"/>
                 <field name="global_result"/>
@@ -107,8 +112,6 @@
         <field name="arch" type="xml">
             <search string="Search builds">
                 <field name="id"/>
-                <field name="project_id"/>
-                <field name="trigger_id"/>
                 <field name="global_state"/>
                 <field name="dest"/>
                 <filter string="Pending" name='pending' domain="[('global_state','=', 'pending')]"/>
@@ -117,8 +120,6 @@
                 <filter string="Done" name='done' domain="[('global_state','=','done')]"/>
                 <filter string="Duplicate" name='duplicate' domain="[('local_state','=', 'duplicate')]"/>
                 <group expand="0" string="Group By...">
-                    <filter string="Branch" name='branch' domain="[]" context="{'group_by':'project_id'}"/>
-                    <filter string="Branch" name='branch' domain="[]" context="{'group_by':'trigger_id'}"/>
                     <filter string="Status" name='status' domain="[]" context="{'group_by':'global_state'}"/>
                     <filter string="Result" name='result' domain="[]" context="{'group_by':'global_result'}"/>
                     <filter string="Start" name='start' domain="[]" context="{'group_by':'job_start'}"/>
@@ -134,6 +135,14 @@
         <field name="res_model">runbot.build</field>
         <field name="view_mode">tree,form,graph,pivot</field>
     </record>
-    <menuitem id="menu_build" action="action_build" parent="runbot_menu_root"/>
+    <record id="action_build_params" model="ir.actions.act_window">
+        <field name="name">Builds Params</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">runbot.build.params</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+    <menuitem id="menu_build" name="Build" parent="runbot_menu_root"/>
+    <menuitem id="menu_build_build" action="action_build" parent="menu_build"/>
+    <menuitem id="menu_build_params" action="action_build_params" parent="menu_build"/>
   </data>
 </odoo>

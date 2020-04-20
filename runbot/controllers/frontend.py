@@ -26,7 +26,46 @@ class Runbot(Controller):
         level = ['info', 'warning', 'danger'][int(pending_count > warn) + int(pending_count > crit)]
         return pending_count, level, scheduled_count
 
-    @route(['/runbot', '/runbot/repo/<model("runbot.repo"):repo>'], website=True, auth='public', type='http')
+    @route(['/runbot', '/runbot/projects/<model("runbot.project.category"):category>'], website=True, auth='public', type='http')
+    def projects(self, category=None, search='', refresh='', **kwargs):
+        search = search if len(search) < 60 else search[:60]
+        env = request.env
+        categories = env['runbot.project.category'].search([])
+        if not category and categories:
+            category = categories[0]
+
+        pending = self._pending()
+        context = {
+            'categories': categories,
+            'category': category,
+            'search': search,
+            'refresh': refresh,
+            'message': request.env['ir.config_parameter'].sudo().get_param('runbot.runbot_message'),
+            'pending_total': pending[0],
+            'pending_level': pending[1],
+            'scheduled_count': pending[2],
+        }
+
+        if category:
+            # basic search to start, only project name. TODO add instance.commits and project pr numbers (all branches names)
+
+            domain = [('category_id', '=', category.id)]
+            if search:
+                for search_elem in search.split("|"):
+                    domain = expression.OR(domain, [('name', 'like', search_elem)])
+
+            projects = env['runbot.project'].search(domain, order='sticky, id desc', limit=100)
+
+            context.update({
+                'projects': projects,
+                'qu': QueryURL('/runbot/projects/' + slug(category), search=search, refresh=refresh),
+            })
+
+        context.update({'message': request.env['ir.config_parameter'].sudo().get_param('runbot.runbot_message')})
+        return request.render('runbot.projects', context)
+
+
+    @route(['/runbot/repo/<model("runbot.repo"):repo>'], website=True, auth='public', type='http')
     def repo(self, repo=None, search='', refresh='', **kwargs):
         search = search if len(search) < 60 else search[:60]
         branch_obj = request.env['runbot.branch']
@@ -38,7 +77,6 @@ class Runbot(Controller):
         if not repo and repos:
             repo = repos[0].id
 
-        pending = self._pending()
         context = {
             'repos': repos.ids,
             'repo': repo,
@@ -46,7 +84,6 @@ class Runbot(Controller):
             'pending_total': pending[0],
             'pending_level': pending[1],
             'scheduled_count': pending[2],
-            'hosts_data': request.env['runbot.host'].search([]),
             'search': search,
             'refresh': refresh,
         }

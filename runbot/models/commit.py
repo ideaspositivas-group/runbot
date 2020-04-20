@@ -6,6 +6,7 @@ class Commit(models.Model):
 
     name = fields.Char('SHA')
     repo_id = fields.Many2one('runbot.repo', string='Repo') # discovered in repo
+    repo_group_id = fields.Many2one(related='repo_id.repo_group_id', stored=True) # discovered in repo
     date = fields.Datetime('Commit date')
     author = fields.Char('Author')
     author_email = fields.Char('Author Email')
@@ -26,9 +27,6 @@ class Commit(models.Model):
                 return f.read()
         except:
             return False
-
-    def __str__(self):
-        return '%s:%s' % (self.repo.short_name, self.name)
 
 class RunbotBuildCommit(models.Model):
     _name = "runbot.build.commit"

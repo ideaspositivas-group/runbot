@@ -57,18 +57,16 @@ class BuildParameters(models.Model):
     _name = "runbot.build.params"
     _description = "All information used by a build to run, should be unique and set on create only"
 
-    trigger_id = fields.Many2one('runbot.trigger', 'Trigger that created this build', readonly=True)
-    project_id = fields.Many2one('runbot.project', required=True) # mostly needed to define a dest
     # on param or on build?
     # execution parametter
     commit_ids = fields.One2many('runbot.build.commit', 'params_id', copy=True)
-    version_id = fields.Many2one('runbot.version', related='project_id.version_id')
+    version_id = fields.Many2one('runbot.version', required=True)
 
     # other informations
     extra_params = fields.Char('Extra cmd args')
-    root_config_id = fields.Many2one('runbot.build.config', 'Run Config', required=True,
+    config_id = fields.Many2one('runbot.build.config', 'Run Config', required=True,
         default=lambda self: self.env.ref('runbot.runbot_build_config_default', raise_if_not_found=False))
-    root_config_data = JsonDictField('Config Data')
+    config_data = JsonDictField('Config Data')
     commit_path_mode = fields.Selection([('rep_sha', 'repo name + sha'),
                                     ('soft', 'repo name only'),
                                     ],
@@ -78,6 +76,7 @@ class BuildParameters(models.Model):
     builds_ids = fields.One2many('runbot.build', 'params_id')
 
     builds_reference_ids = fields.One2many('runbot.build.reference', 'build_id')
+    modules = fields.Char('Modules') # TODO fill this with combination of triggers repo_group_modules and project_id.modules (or trigger?)
 
     # problem for dependencies and path_mode.
     # they are change for upgrade, need commit in another version.
@@ -113,10 +112,8 @@ class BuildResults(models.Model):
     # -> display all?
 
     params_id = fields.Many2one('runbot.build.params')
-    config_id = fields.Many2one('runbot.build.config', default=lambda self: self.build_id.root_config_id)
-    config_data = JsonDictField('Config Data', default=lambda self: self.build_id.root_config_data)
-    trigger_id = fields.Many2one('runbot.build.config', related="params_id.trigger_id")
-    project_id = fields.Many2one('runbot.project', related='params_id.project_id', stored=True)  # mostly needed to define a dest
+    config_id = fields.Many2one('runbot.build.config', related='params_id.config_id')
+    config_data = JsonDictField('Config Data', related='params_id.config_data')
     # could be a default value, but possible to change it to allow duplicate accros branches
 
 
@@ -185,7 +182,7 @@ class BuildResults(models.Model):
     keep_running = fields.Boolean('Keep running', help='Keep running')
     log_counter = fields.Integer('Log Lines counter', default=100)
 
-    @api.depends('config_id')
+    @api.depends('params_id.config_id')
     def _compute_log_list(self):  # storing this field because it will be access trhoug repo viewn and keep track of the list at create
         for build in self:
             build.log_list = ','.join({step.name for step in build.config_id.step_ids() if step._has_log()})
@@ -414,7 +411,7 @@ class BuildResults(models.Model):
             if build.parent_id and build.parent_id.local_state in ('running', 'done'):
                     build.parent_id.update_build_end()
 
-    @api.depends('project_id.name')
+    @api.depends('params_id.version_id.name')
     def _compute_dest(self):
         # name is not really usefull, but this is a big change
         # - need to move all db/folder/docker/regex  + ngnix + ...
@@ -423,7 +420,7 @@ class BuildResults(models.Model):
 
         for build in self:
             if build.id:
-                nickname = build.project_id.name
+                nickname = build.params_id.version_id.name # TODO check that
                 nickname = re.sub(r'"|\'|~|\:', '', nickname)
                 nickname = re.sub(r'_|/|\.', '-', nickname)
                 build.dest = ("%05d-%s" % (build.id or 0, nickname[:32])).lower()  # could be 38
@@ -877,7 +874,8 @@ class BuildResults(models.Model):
         repo_modules, available_modules = self._get_repo_available_modules(commits=commits)
 
         patterns_list = []
-        for pats in [self.repo_id.modules, self.branch_id.modules, modules_patterns]:
+        # TODO FIXME merge repo_group.modules from trigger on params
+        for pats in [self.params_id.modules, modules_patterns]:
             patterns_list += [p.strip() for p in (pats or '').split(',')]
 
         if self.repo_id.modules_auto == 'all':
@@ -1179,6 +1177,23 @@ class BuildResults(models.Model):
 
     def get_formated_build_age(self):
         return s2human(self.build_age)
+
+    def get_color_class(self):
+        if self.global_state == 'pending':
+            return 'default'
+        if self.global_state in ('testing', 'waiting'):
+            return 'info'
+
+        if self.global_result == 'ko':
+            return 'danger'
+        if self.global_result == 'warn':
+            return 'warning'
+        if self.global_result == 'ok':
+            return 'success'
+        if self.global_result == 'skipped':
+            return 'default'
+        if self.global_result in ('killed', 'manually_killed'):
+            return 'killed'
 
 
 class BuildReference(models.Model):

@@ -1,0 +1,121 @@
+<odoo>
+  <data>
+    <record id="view_runbot_project" model="ir.ui.view">
+        <field name="model">runbot.project</field>
+        <field name="arch" type="xml">
+            <form string="Projects">
+                <div class="oe_button_box" name="button_box">
+                    <button name="toggle_request_branch_rebuild" type="object" class="oe_stat_button" icon="fa-play">
+                    <field name="rebuild_requested" widget="boolean_button" options='{"terminology": {
+                        "string_true": "Rebuild Asked",
+                        "hover_true": "Cancel the branch rebuild",
+                        "string_false": "No Rebuild Asked",
+                        "hover_false": "Request a branch rebuild"
+                    }}'/>
+                    </button>
+                </div>
+                <group>
+                    <field name="name"/>
+                    <field name="category_id"/>
+                    <field name="sticky"/>
+                    <field name="is_base"/>
+                    <field name="version_id"/>
+                    <field name="no_build"/>
+                    <field name="branch_ids">
+                        <tree>
+                            <field name="branch_name"/>
+                            <field name="repo_id"/>
+                            <field name="pull_head_name"/>
+                            <field name="target_branch_name"/>
+                        </tree>
+                    </field>
+                    <field name="instance_ids">
+                        <tree>
+                            <field name="state"/>
+                            <field name="project_commit_ids"/>
+                            <field name="instance_slot_ids"/>
+                        </tree>
+                    </field>
+                </group>
+            </form>
+        </field>
+    </record>
+    <record id="view_runbot_project_tree" model="ir.ui.view">
+        <field name="model">runbot.project</field>
+        <field name="arch" type="xml">
+            <tree string="Build params">
+                <field name="name"/>
+                <field name="branch_ids"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_runbot_instance" model="ir.ui.view">
+        <field name="model">runbot.instance</field>
+        <field name="arch" type="xml">
+            <form string="Project instance">
+                <group>
+                    <field name="last_update"/>
+                    <field name="project_id"/>
+                    <field name="state"/>
+                    <field name="project_commit_ids">
+                        <tree>
+                            <field name="commit_id"/>
+                            <field name="match_type"/>
+                        </tree>
+                    </field>
+                    <field name="instance_slot_ids">
+                        <tree>
+                            <field name="trigger_id"/>
+                            <field name="build_id"/>
+                            <field name="link_type"/>
+                            <field name="result"/>
+                        </tree>
+                    </field>
+                </group>
+            </form>
+        </field>
+    </record>
+    <record id="view_runbot_instance_tree" model="ir.ui.view">
+        <field name="model">runbot.instance</field>
+        <field name="arch" type="xml">
+            <tree string="Build params">
+                <field name="project_id"/>
+                <field name="state"/>
+            </tree>
+        </field>
+    </record>
+
+
+    <record id="action_project" model="ir.actions.act_window">
+        <field name="name">Projects</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">runbot.project</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+    <record id="action_project_category" model="ir.actions.act_window">
+        <field name="name">Categories</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">runbot.project.category</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+    <record id="action_project_version" model="ir.actions.act_window">
+        <field name="name">Versions</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">runbot.version</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+    <record id="action_project_instance" model="ir.actions.act_window">
+        <field name="name">Instances</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">runbot.instance</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_project" name="Project" parent="runbot_menu_root"/>
+    <menuitem id="menu_project_project" action="action_project" parent="menu_project"/>
+    <menuitem id="menu_project_category" action="action_project_category" parent="menu_project"/>
+    <menuitem id="menu_project_version" action="action_project_version" parent="menu_project"/>
+    <menuitem id="menu_project_instance" action="action_project_instance" parent="menu_project"/>
+  </data>
+</odoo>
