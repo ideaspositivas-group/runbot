@@ -31,7 +31,7 @@
         'templates/dashboard.xml',
         'templates/nginx.xml',
         'templates/badge.xml',
-        'templates/branch.xml',
+        'templates/project.xml',
         'data/runbot_build_config_data.xml',
         'data/build_parse.xml',
         'data/runbot_error_regex_data.xml',

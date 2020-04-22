@@ -32,7 +32,7 @@ class RunbotBuildError(models.Model):
     repo_ids = fields.Many2many('runbot.repo', compute='_compute_repo_ids')
     active = fields.Boolean('Error is not fixed', default=True, track_visibility='onchange')
     tag_ids = fields.Many2many('runbot.build.error.tag', string='Tags')
-    build_count = fields.Integer(compute='_compute_build_counts', string='Nb seen', stored=True)
+    build_count = fields.Integer(compute='_compute_build_counts', string='Nb seen')
     parent_id = fields.Many2one('runbot.build.error', 'Linked to')
     child_ids = fields.One2many('runbot.build.error', 'parent_id', string='Child Errors', context={'active_test': False})
     children_build_ids = fields.Many2many('runbot.build', compute='_compute_children_build_ids', string='Children builds')

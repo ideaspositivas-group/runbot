@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+<data>
+<template id="runbot.project">
+    <t t-call='website.layout'>
+        <div class="container-fluid">
+            <div class="row">
+                <div class='col-md-12'>
+                    <div class="navbar navbar-default">
+                        <span class="text-center" style="font-size: 18px;">
+                            Project: <t t-esc="project.name"/> <i t-if="project.sticky" class="fa fa-star" style="color: #f0ad4e" />
+                        </span>
+                        <span class="pull-right"><t t-call="website.pager" /></span>
+                    </div>
+                    <div>
+                        <table class="table table-condensed table-stripped" style="table-layout: initial;">
+                            <tr><td>Version</td><td t-esc="project.version_id.name"/></tr>
+                            <tr><td>branches</td><td>
+                                <div t-foreach="project.branch_ids" t-as="branch"><small><a t-att-href="branch.branch_url" t-esc="branch.dname"/></small></div>
+                            </td></tr>
+
+                            <tr t-if="more"><td>Category</td><td t-esc="project.category_id"/></tr>
+                            <tr t-if="more"><td>Build disabled</td><td t-esc="project.no_build"/></tr>
+                            <tr t-if="more"><td>Modules</td><td t-esc="project.modules"/></tr>
+                        </table>
+                    </div>
+                    <table class="table table-condensed table-stripped" style="table-layout: initial;">
+                        <thead>
+                            <tr>
+                                <th>Create date</th>
+                                <th t-if="more">Last update</th>
+                                <th t-if="more">state</th>
+                                <th>Commits</th>
+                                <th>Builds</th>
+                            </tr>
+                        </thead>
+                        <t t-foreach="instances" t-as="instance">
+                            <tr>
+                                <td t-esc="instance.create_date"></td>
+                                <td t-esc="instance.last_update" t-if="more"></td>
+                                <td> 
+                                    <t t-foreach="instance.project_commit_ids" t-as="project_commit">
+                                        <a t-attf-href="/runbot/commit/#{project_commit.commit_id.id}">
+                                            <span class="label" t-esc="project_commit.commit_id.dname"/>
+                                        </a>
+                                    </t>
+                                </td>
+                                <t t-if="instance.state=='preparing'"><t t-set="klass">default</t></t>
+                                <t t-if="instance.state=='ready'"><t t-set="klass">success</t></t>
+                                <td t-attf-class="bg-{{klass}}-light" style="width:22%">
+                                    <t t-foreach="instance.slot_ids" t-as="slot">
+                                    <a t-attf-href="/runbot/build/#{slot.build_id.id}">
+                                        <span
+                                        t-attf-class="label label-{{slot.build_id.get_color_class()}}"
+                                        t-esc="slot.trigger_id.name"/>
+                                    </a>
+                                    </t>
+                                </td>
+                            </tr>
+                        </t>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </t>
+</template>
+<template id="runbot.instance">
+  <t t-call='website.layout'>
+        <div class="container-fluid">
+            <div class="row">
+                <div class='col-md-12'>
+                    <div class="navbar navbar-default">
+                        <span class="text-center" style="font-size: 18px;">
+                            Project: <t t-esc="project.name"/> <i t-if="project.sticky" class="fa fa-star" style="color: #f0ad4e" />
+                        </span>
+                        <span class="pull-right"><t t-call="website.pager" /></span>
+                    </div>
+                    <div>
+                        <table class="table table-condensed table-stripped" style="table-layout: initial;">
+                            <tr><td>Version</td><td t-esc="project.version_id.name"/></tr>
+                            <tr><td>branches</td><td>
+                                <div t-foreach="project.branch_ids" t-as="branch"><small><a t-att-href="branch.branch_url" t-esc="branch.dname"/></small></div>
+                            </td></tr>
+
+                            <tr t-if="more"><td>Category</td><td t-esc="project.category_id"/></tr>
+                            <tr t-if="more"><td>Build disabled</td><td t-esc="project.no_build"/></tr>
+                            <tr t-if="more"><td>Modules</td><td t-esc="project.modules"/></tr>
+                        </table>
+                    </div>
+                    <table class="table table-condensed table-stripped" style="table-layout: initial;">
+                        <thead>
+                            <tr>
+                                <th>Create date</th>
+                                <th t-if="more">Last update</th>
+                                <th t-if="more">state</th>
+                                <th>Commits</th>
+                                <th>Builds</th>
+                            </tr>
+                        </thead>
+                        <t t-foreach="instances" t-as="instance">
+                            <tr>
+                                <td t-esc="instance.create_date"></td>
+                                <td t-esc="instance.last_update" t-if="more"></td>
+                                <td> 
+                                    <t t-foreach="instance.project_commit_ids" t-as="project_commit">
+                                        <a t-attf-href="/runbot/commit/#{project_commit.commit_id.id}">
+                                            <span class="label" t-esc="project_commit.commit_id.dname"/>
+                                        </a>
+                                    </t>
+                                </td>
+                                <t t-if="instance.state=='preparing'"><t t-set="klass">default</t></t>
+                                <t t-if="instance.state=='ready'"><t t-set="klass">success</t></t>
+                                <td t-attf-class="bg-{{klass}}-light" style="width:22%">
+                                    <t t-foreach="instance.slot_ids" t-as="slot">
+                                    <a t-attf-href="/runbot/build/#{slot.build_id.id}">
+                                        <span
+                                        t-attf-class="label label-{{slot.build_id.get_color_class()}}"
+                                        t-esc="slot.trigger_id.name"/>
+                                    </a>
+                                    </t>
+                                </td>
+                            </tr>
+                        </t>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </t>
+</template>
+</data>
+</odoo>

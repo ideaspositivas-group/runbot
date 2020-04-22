@@ -111,7 +111,7 @@ class BuildResults(models.Model):
     # -> commit corresponding to repo of trigger_id
     # -> display all?
 
-    params_id = fields.Many2one('runbot.build.params')
+    params_id = fields.Many2one('runbot.build.params', index=True)
     config_id = fields.Many2one('runbot.build.config', related='params_id.config_id')
     config_data = JsonDictField('Config Data', related='params_id.config_data')
     # could be a default value, but possible to change it to allow duplicate accros branches
@@ -1200,6 +1200,6 @@ class BuildReference(models.Model):
     _name = 'runbot.build.reference'
     _description = 'build result used for dump or dependencies as reference for another build'
 
-    build_id = fields.Many2one('runbot.build')
+    build_id = fields.Many2one('runbot.build', index=True)
     ref_config_descriptor = fields.Many2one('runbot.build.reference.descriptor')
     key = fields.Char('key')

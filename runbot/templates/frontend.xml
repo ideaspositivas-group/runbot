@@ -136,7 +136,7 @@
                                      <t t-call="runbot.build_button">
                                       <t t-set="klass">btn-group-sm</t>
                                       <t t-set="show_rebuild_button" t-value="bu==br['builds'][0]"></t>
-                                      <t t-set="show_commit_button" t-value="True"/>
+                                      <t t-set="show_commit_button" t-value="False"/>
                                      </t>
                                      <t t-if="bu['build_type']=='scheduled'"><i class="fa fa-moon-o" t-att-title="bu.build_type_label()" t-att-aria-label="bu.build_type_label()"/></t>
                                      <t t-if="bu['build_type'] in ('rebuild', 'indirect')"><i class="fa fa-recycle" t-att-title="bu.build_type_label()" t-att-aria-label="bu.build_type_label()"/></t>
@@ -204,34 +204,31 @@
                             </tr>
                               <tr t-foreach="projects" t-as="project">
                               <td style="width:12%">
-                                  <div class="project_name"><i t-if="project.sticky" class="fa fa-star" style="color: #f0ad4e" /><a t-attf-href="/runbot/project/#{project.id}"><b t-esc="project.name"/></a></div>
-                                        <div class="btn-group btn-group-xs">
-                                        <a t-attf-href="{{br['branch'].branch_url}}" class="btn btn-default btn-xs"><t t-esc="'Branch ' if not br['branch'].pull_head_name else 'Pull '"/><i class="fa fa-github"/></a>
-                                        <a t-attf-href="/runbot/quick_connect/#{br['branch'].id}" class="btn btn-default btn-xs" aria-label="Quick Connect"><i class="fa fa-fast-forward" title="Quick Connect"/></a>
-                                    </div>
-                                </td>
-                                <t t-foreach="project.last_instances" t-as="instance">
-                                    <t t-if="instance.state=='preparing'"><t t-set="klass">default</t></t>
-                                    <t t-if="instance.state=='ready'"><t t-set="klass">success</t></t>
-                                    <td t-attf-class="bg-{{klass}}-light" style="width:22%">
+                                  <div class="project_name">
+                                    <i t-if="project.sticky" class="fa fa-star" style="color: #f0ad4e" />
+                                    <a t-attf-href="/runbot/project/#{project.id}">
+                                    <b t-esc="project.name"/></a>
+                                  </div>
+                              </td>
+                              <t t-foreach="project.last_instances" t-as="instance">
+                                <t t-if="instance.state=='preparing'"><t t-set="klass">default</t></t>
+                                <t t-if="instance.state=='ready'"><t t-set="klass">success</t></t>
+                                <td t-attf-class="bg-{{klass}}-light" style="width:22%">
+                                  <t t-foreach="instance.slot_ids" t-as="slot">
+                                    <a t-attf-href="/runbot/build/#{slot.build_id.id}">
                                       <span
-                                        t-foreach="instance_slot_ids"
-                                        t-as="slot" 
                                         t-attf-class="label label-{{slot.build_id.get_color_class()}}"
                                         t-esc="slot.trigger_id.name"/>
-                                    </td>
-                                </t>
+                                    </a>
+                                  </t>
+                                </td>
+                              </t>
                             </tr>
-                            </table>
+                          </table>
                       </div>
                   </div>
-
               </div>
           </t>
       </template>
-
-
-
-
     </data>
 </odoo>

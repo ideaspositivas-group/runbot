@@ -17,19 +17,19 @@ class runbot_branch(models.Model):
     _sql_constraints = [('branch_repo_uniq', 'unique (name,repo_id)', 'The branch must be unique per repository !')]
 
     head = fields.Many2one('runbot.commit', 'Head Commit')
-    head_name = fields.Char('Head name', related='head.name', stored=True)
+    head_name = fields.Char('Head name', related='head.name', store=True)
     project_id = fields.Many2one('runbot.project', 'Project', required=True, ondelete='cascade')
     repo_id = fields.Many2one('runbot.repo', 'Repository', required=True, ondelete='cascade')
     name = fields.Char('Ref Name', required=True)
     branch_name = fields.Char(compute='_get_branch_infos', string='Branch', readonly=1, store=True)
-    reference_name = fields.Char(compute='_compute_reference_name', stored=True)
+    reference_name = fields.Char(compute='_compute_reference_name', store=True)
     branch_url = fields.Char(compute='_get_branch_url', string='Branch url', readonly=1)
     pull_head_name = fields.Char(compute='_get_branch_infos', string='PR HEAD name', readonly=1, store=True)
     pull_head_repo_id = fields.Many2one('runbot.repo', 'Pull head repository', ondelete='cascade')
     target_branch_name = fields.Char(compute='_get_branch_infos', string='PR target branch', store=True)
     pull_branch_name = fields.Char(compute='_compute_pull_branch_name', string='Branch display name')
     sticky = fields.Boolean('Sticky')
-    is_main = fields.Boolean('Is main', default=False, compute='_compute_is_main', stored=True)
+    is_main = fields.Boolean('Is main', default=False, compute='_compute_is_main', store=True)
     # TODO remove sticky and main and stuff.
     # should be based on a project, but need a category to know corresponding project
     # anyway, display will be by category (?)
@@ -42,9 +42,15 @@ class runbot_branch(models.Model):
     state = fields.Char('Status')
     priority = fields.Boolean('Build priority', default=False)
     no_auto_build = fields.Boolean("Don't automatically build commit on this branch", default=False)
-
     make_stats = fields.Boolean('Extract stats from logs', compute='_compute_make_stats', store=True)
+    dname = fields.Char('Display name', compute='_compute_dname')
 
+    @api.depends('branch_name', 'repo_id.short_name')
+    def _compute_dname(self):
+        for branch in self:
+            branch.dname = '%s:%s' % (branch.repo_id.short_name, branch.branch_name)
+
+    # todo ass shortcut to create pr in interface as inherited view Create Fast PR
     @api.depends('target_branch_name', 'pull_head_name', 'pull_head_repo_id')
     def _compute_reference_name(self):
         """
@@ -76,8 +82,9 @@ class runbot_branch(models.Model):
 
     @api.depends('sticky')
     def _compute_is_main(self):
-        if self.sticky:
-            self.is_main = True
+        for project in self:
+            if project.sticky:
+                project.is_main = True
         # else, don't change or use default on create, does it work?
 
     #@api.depends('sticky', 'defined_sticky', 'target_branch_name', 'name')

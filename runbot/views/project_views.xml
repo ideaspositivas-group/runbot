@@ -33,7 +33,7 @@
                         <tree>
                             <field name="state"/>
                             <field name="project_commit_ids"/>
-                            <field name="instance_slot_ids"/>
+                            <field name="slot_ids"/>
                         </tree>
                     </field>
                 </group>
@@ -64,7 +64,7 @@
                             <field name="match_type"/>
                         </tree>
                     </field>
-                    <field name="instance_slot_ids">
+                    <field name="slot_ids">
                         <tree>
                             <field name="trigger_id"/>
                             <field name="build_id"/>

@@ -3,6 +3,14 @@
 from odoo.api import Environment
 from odoo import SUPERUSER_ID
 import logging
+import progressbar
+from collections import defaultdict
+
+def _bar(total):
+    b = progressbar.ProgressBar(maxval=total, \
+        widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()])
+    b.start()
+    return b
 
 _logger = logging.getLogger(__name__)
 
@@ -28,11 +36,16 @@ def migrate(cr, version):
     RD_category = env['runbot.project.category'].create({
         'name': 'R&D'
     })
+    security_category = env['runbot.project.category'].create({
+        'name': 'Security'
+    })
     category_matching = { # some hardcoded info 
         'odoo': RD_category,
         'enterprise': RD_category,
         'upgrade': RD_category,
         'design-themes': RD_category,
+        'odoo-security': security_category,
+        'enterprise-security': security_category,
     }
     cr.execute("""
         SELECT 
@@ -112,7 +125,9 @@ def migrate(cr, version):
     versions = {}
     branch_to_project = {}
     branch_to_version = {}
-    for branch in branches:
+    progress = _bar(len(branches))
+    for i, branch in enumerate(branches):
+        progress.update(i)
         if branch.sticky and branch.branch_name not in versions:
             versions[branch.branch_name] = env['runbot.version'].create({
                 'name': branch.branch_name,
@@ -145,64 +160,35 @@ def migrate(cr, version):
         branch.project_id = project
         branch_to_project[branch.id] = project
         branch_to_version[branch.id] = project.version_id.id
-    branches.flush()
 
+    branches.flush()
+    env['runbot.project'].flush()
+    progress.finish()
 
     batch_size = 100000
 
-    cr.execute("SELECT count(*) FROM runbot_build WHERE duplicate_id IS NULL")
-    nb_build = cr.fetchone()[0]
-
-    # create params from build
-    _logger.info('Creating params')
-    counter = 0
-    percent = int(nb_build/100)
-    for offset in range(0, nb_build, batch_size):
-        cr.execute("""
-            SELECT
-            id, branch_id, repo_id, extra_params, config_id, config_data, commit_path_mode
-            FROM runbot_build WHERE duplicate_id IS NULL ORDER BY id asc LIMIT %s OFFSET %s""", (batch_size, offset))
-
-        for id, branch_id, repo_id, extra_params, config_id, config_data, commit_path_mode in cr.fetchall():
-            if counter % percent == 0:
-                _logger.info('%s%%', int(counter/percent))
-            counter += 1
-            params = env['runbot.build.params'].create({
-                'version_id':  branch_to_version[branch_id],
-                'extra_params': extra_params,
-                'config_id': config_id,
-                'config_data': config_data,
-                'commit_path_mode':commit_path_mode,
-            })
-            cr.execute('UPDATE runbot_build_commit SET params_id=%s WHERE build_id=%s', (params.id, id))
-            cr.execute('UPDATE runbot_build SET params_id=%s WHERE id=%s', (params.id, id))
-            # TODO deps from logs?
-
-        env.cache.invalidate()
-
-    ########################
-    # build and commits
-    ########################
-    _logger.info('Creating commits')
-
-
     sha_commits = {}
     sha_repo_commits = {}
-    percent = int(nb_build/100)
+    branch_heads = {}
+    build_commit_ids = defaultdict(dict)
+    cr.execute("SELECT count(*) FROM runbot_build WHERE duplicate_id IS NULL")
+    nb_real_build = cr.fetchone()[0]
 
+    # create params from build
+    _logger.info('Creating params and commits')
     counter = 0
-    for offset in range(0, nb_build, batch_size):
+    progress = _bar(nb_real_build)
+    for offset in range(0, nb_real_build, batch_size):
         cr.execute("""
             SELECT
-            id, name, branch_id, repo_id,
-            author, author_email, committer, committer_email, subject, date 
-            FROM runbot_build WHERE duplicate_id IS NULL ORDER BY id asc LIMIT %s OFFSET %s
-        """, (batch_size, offset))
-        for id, name, branch_id, repo_id, author, author_email, committer, committer_email, subject, date in cr.fetchall():
+            id, branch_id, repo_id, extra_params, config_id, config_data, commit_path_mode,
+            name, author, author_email, committer, committer_email, subject, date
+            FROM runbot_build WHERE duplicate_id IS NULL ORDER BY id asc LIMIT %s OFFSET %s""", (batch_size, offset))
 
-            if counter % percent == 0:
-                _logger.info('%s%%', int(counter/percent))
-            counter += 1
+        for id, branch_id, repo_id, extra_params, config_id, config_data, commit_path_mode,\
+            name, author, author_email, committer, committer_email, subject, date in cr.fetchall():
+            progress.update(counter)
+
             key = (name, repo_id)
             if key in sha_repo_commits:
                 commit = sha_repo_commits[key]
@@ -219,18 +205,49 @@ def migrate(cr, version):
                 })
                 sha_repo_commits[key] = commit
                 sha_commits[name] = commit
+
                 # setting head if it is a new commit, should be ok since in chronological order. if not, check type and parent_id
                 # TODO: check that it is corresct or scheduler will explode
-                cr.execute('UPDATE runbot_branch SET head=%s WHERE id=%s', (commit.id, branch_id))
+            branch_heads[branch_id] = commit.id
+            counter += 1
+            params = env['runbot.build.params'].create({
+                'version_id':  branch_to_version[branch_id],
+                'extra_params': extra_params,
+                'config_id': config_id,
+                'config_data': config_data,
+                'commit_path_mode':commit_path_mode,
+            })
+            env['runbot.build.commit'].create({
+                'commit_id': commit.id,
+                'params_id': params.id,
+            })
+            build_commit_ids[id][commit.repo_group_id.id] = (name, commit.id)
+            cr.execute('UPDATE runbot_build_commit SET params_id=%s WHERE build_id=%s', (params.id, id))
+            # todo set params on duplicate?
+            cr.execute('UPDATE runbot_build SET params_id=%s WHERE id=%s', (params.id, id))
+            # TODO deps from logs?
+        env.cache.invalidate()
+    progress.finish()
 
+
+    for branch, head in branch_heads.items():
+        cr.execute('UPDATE runbot_branch SET head=%s WHERE id=%s', (head, branch))
+    del branch_heads
     # adapt build commits
 
+
+    _logger.info('Updating build commits')
     cr.execute("SELECT count(*) FROM runbot_build_commit")
     nb_build_commit = cr.fetchone()[0]
+    counter = 0
+
+    progress = _bar(nb_build_commit)
     for offset in range(0, nb_build_commit, batch_size):
-        cr.execute('SELECT id, dependency_hash, dependecy_repo_id from runbot_build_commit LIMIT %s OFFSET %s', (batch_size, offset))
+        cr.execute('SELECT id, dependency_hash, dependecy_repo_id, build_id from runbot_build_commit WHERE build_id is not NULL LIMIT %s OFFSET %s', (batch_size, offset))
         # TODO unique by hash repo and update
-        for id, dependency_hash, dependency_repo_id in cr.fetchall():
+        for id, dependency_hash, dependency_repo_id, build_id in cr.fetchall():
+            progress.update(counter)
+            counter += 1
             key = (dependency_hash, dependency_repo_id)
             commit = sha_repo_commits.get(key) or sha_commits.get(dependency_hash) # TODO check this (changing repo)
             if not commit:
@@ -240,10 +257,13 @@ def migrate(cr, version):
                     'name': dependency_hash,
                     'repo_id': dependency_repo_id,
                 })
+
+                build_commit_ids[build_id][commit.repo_group_id.id] = (dependency_hash, commit.id)
                 sha_repo_commits[key] = commit
                 sha_commits[dependency_hash] = commit
 
             cr.execute('UPDATE runbot_build_commit SET commit_id=%s WHERE id=%s', (commit.id, id))
+    progress.finish()
 
     _logger.info('Creating instances')
     ###################
@@ -251,65 +271,83 @@ def migrate(cr, version):
     ####################
     cr.execute("SELECT count(*) FROM runbot_build WHERE parent_id IS NOT NULL")
     nb_root_build = cr.fetchone()[0]
-    percent = int(nb_root_build/100)
-
     counter = 0
+    progress = _bar(nb_root_build)
     for offset in range(0, nb_root_build, batch_size):
         cr.execute("""
             SELECT
-            id, duplicate_id, repo_id, branch_id, create_date
-            FROM runbot_build WHERE parent_id IS NOT NULL order by id asc
+            id, duplicate_id, repo_id, branch_id, create_date, build_type
+            FROM runbot_build WHERE parent_id IS NULL order by id asc
             LIMIT %s OFFSET %s""", (batch_size, offset))
-        for id, duplicate_id, repo_id, branch_id, create_date in cr.fetchall():
-            if counter % percent == 0:
-                _logger.info('%s%%', int(counter/percent))
+        for id, duplicate_id, repo_id, branch_id, create_date, build_type in cr.fetchall():
+            progress.update(counter)
             counter += 1
             if repo_id is None:
                 _logger.warning('Skipping %s: no repo', id)
                 continue
-            # how to link build and project instance?
-            # depending on triggers:
-            # first naive solution: one instance per build
-            # then, merge close instance in same project
-            instance = env['runbot.instance'].create({
-                'last_update': create_date,
-                'state': 'ready',
-                'project_id': branch_to_project[branch_id].id
-            })
+            project = branch_to_project[branch_id]
+            # try to merge build in same instance
+            # not temporal notion in this case, only hash consistency
+            instance = False
+            build_id = duplicate_id or id
+            build_commits = build_commit_ids[build_id]
+            instance_group_repos_ids = []
+            if project.last_instance:
+                if duplicate_id and build_id in project.last_instance.slot_ids.mapped('build_id').ids:
+                    continue
 
+                # to fix: nightly will be in the same instance of the previous normal one. If config_id is diffrent, create instance?
+
+                instance = project.last_instance
+                instance_repos_groups = []
+                instance_commits = instance.project_commit_ids.mapped('commit_id')
+                instance_group_repos_ids = instance_commits.mapped('repo_group_id').ids
+                for commit in instance_commits:
+                    repo_group_id = commit.repo_group_id.id
+                    if repo_group_id in build_commits:
+                        instance_commit_name, _ = build_commits[repo_group_id]
+                        if instance_commit_name != commit.name:
+                            instance = False
+                            instance_group_repos_ids = []
+                            break
+
+            missing_commits = [commit_id for repo_group_id, (_, commit_id) in build_commits.items() if repo_group_id not in instance_group_repos_ids]
+            if not instance:
+                instance = env['runbot.instance'].create({
+                    'last_update': create_date,
+                    'state': 'ready',
+                    'project_id': project.id
+                })
+                project.last_instance = instance
             instance_slot = env['runbot.instance.slot'].create({
                 'trigger_id': triggers[repo_to_group[repo_id].id].id,
-                'project_instance_id': instance.id,
-                'build_id': duplicate_id or id,
-                'link_type': 'matched' if duplicate_id else 'created',
+                'instance_id': instance.id,
+                'build_id': build_id,
+                'link_type': 'rebuild' if build_type == 'rebuild' else 'matched' if duplicate_id else 'created',
                 'active': True,
             })
-            for build_commit in instance_slot.build_id.params_id.commit_ids:
+            for missing_commit in missing_commits: # todo improve this, need time to prefetch params + commits
                 env['runbot.instance.commit'].create({
-                    'commit_id': build_commit.commit_id.id,
-                    'project_instance_id': instance.id,
+                    'commit_id': missing_commit,
+                    'instance_id': instance.id,
                     'match_type': 'head', # TODO fixme
                     #'has_main' = True, ?
                 })
 
         env.cache.invalidate()
+    progress.finish()
 
-
-
-    # manage duplicate= thet should be a link in project
-    # dependency to commit
-    # split params? why again? usefull for rebuild, and matching same build on
-
-
-
-    #split result and build
     #Build of type rebuild may point to same params as rebbuild?
-
 
     ###################
     # Cleaning (performances)
     ###################
     # 1. avoid UPDATE "runbot_build" SET "commit_path_mode"=NULL WHERE "commit_path_mode"='soft'
+
+    _logger.info('Pre-cleaning')
     cr.execute('alter table runbot_build alter column commit_path_mode drop not null')
     cr.execute('ANALYZE')
     cr.execute("delete from runbot_build where local_state='duplicate'") # what about duplicate childrens?
+    _logger.info('End')
+
+    # todo rename folders from dest to id.
